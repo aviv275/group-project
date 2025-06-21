@@ -1,0 +1,109 @@
+{
+  "category_classification": {
+    "accuracy": 1.0,
+    "cv_accuracy_mean": 0.97,
+    "cv_accuracy_std": 0.04847679857416329,
+    "classification_report": {
+      "Environmental": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 10.0
+      },
+      "Governance": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 11.0
+      },
+      "Other": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 8.0
+      },
+      "Social": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 11.0
+      },
+      "accuracy": 1.0,
+      "macro avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 40.0
+      },
+      "weighted avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 40.0
+      }
+    }
+  },
+  "greenwashing_detection": {
+    "accuracy": 0.5,
+    "precision": 0.35294117647058826,
+    "recall": 0.4,
+    "f1_score": 0.375,
+    "roc_auc": 0.5133333333333333,
+    "cv_roc_auc_mean": 0.4611020833333333,
+    "cv_roc_auc_std": 0.061985325464311875,
+    "classification_report": {
+      "0": {
+        "precision": 0.6086956521739131,
+        "recall": 0.56,
+        "f1-score": 0.5833333333333334,
+        "support": 25.0
+      },
+      "1": {
+        "precision": 0.35294117647058826,
+        "recall": 0.4,
+        "f1-score": 0.375,
+        "support": 15.0
+      },
+      "accuracy": 0.5,
+      "macro avg": {
+        "precision": 0.4808184143222507,
+        "recall": 0.48000000000000004,
+        "f1-score": 0.4791666666666667,
+        "support": 40.0
+      },
+      "weighted avg": {
+        "precision": 0.5127877237851663,
+        "recall": 0.5,
+        "f1-score": 0.5052083333333334,
+        "support": 40.0
+      }
+    }
+  },
+  "model_comparison": {
+    "model_comparison": {
+      "Logistic Regression": {
+        "accuracy": 0.5,
+        "precision": 0.35294117647058826,
+        "recall": 0.4,
+        "f1": 0.375,
+        "roc_auc": 0.5133333333333333
+      },
+      "Random Forest": {
+        "accuracy": 0.525,
+        "precision": 0.3333333333333333,
+        "recall": 0.26666666666666666,
+        "f1": 0.2962962962962963,
+        "roc_auc": 0.448
+      }
+    },
+    "best_model": "Logistic Regression",
+    "best_roc_auc": 0.5133333333333333
+  },
+  "dataset_info": {
+    "total_samples": 200,
+    "training_samples": 160,
+    "test_samples": 40,
+    "greenwashing_rate": 0.38,
+    "vocabulary_size": 447
+  }
+}

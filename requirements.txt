@@ -1,0 +1,36 @@
+# Core data and ML libraries
+pandas>=1.5.0
+scikit-learn>=1.2.0
+numpy>=1.20.0
+scipy>=1.9.0
+joblib>=1.2.0
+
+# RAG and AI Agent dependencies
+langchain>=0.1.0
+langchain-community>=0.1.0
+langchain-core>=0.1.0
+langchain-google-genai>=0.1.0
+langchainhub>=0.1.0
+langsmith>=0.1.0
+faiss-cpu>=1.7.0
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+PyPDF2>=3.0.0
+
+# Web app
+streamlit>=1.25.0
+
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.12.0
+
+# Utilities
+tqdm>=4.60.0
+ipykernel
+nbformat
+# For advanced visualizations
+umap-learn>=0.5.0
+hdbscan>=0.8.0
+
+# Removed from the original file
+# openai 

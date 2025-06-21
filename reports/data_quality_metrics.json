@@ -1,0 +1,20 @@
+{
+  "original_rows": 200,
+  "cleaned_rows": 200,
+  "rows_removed": 0,
+  "duplicates_removed": 0,
+  "missing_values_original": 0,
+  "missing_values_cleaned": 0,
+  "text_length_min": 60,
+  "text_length_max": 96,
+  "text_length_mean": 77.57,
+  "unique_organizations": 15,
+  "unique_locations": 10,
+  "category_distribution": {
+    "Governance": 54,
+    "Social": 53,
+    "Environmental": 52,
+    "Other": 41
+  },
+  "greenwashing_rate": 0.38
+}
