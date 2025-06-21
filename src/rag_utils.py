@@ -19,8 +19,6 @@ import re
 # RAG and embedding imports
 import faiss
 from sentence_transformers import SentenceTransformer
-import chromadb
-from chromadb.config import Settings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
@@ -198,8 +196,10 @@ class ChromaVectorStore:
         Args:
             persist_directory: Directory to persist the database
         """
-        self.persist_directory = persist_directory
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        import chromadb
+        from chromadb.config import Settings
+
+        self.client = chromadb.PersistentClient(path=persist_directory, settings=Settings(anonymized_telemetry=False))
         self.collection = None
         
     def create_collection(self, name: str = "esg_documents") -> None:
@@ -619,6 +619,7 @@ def create_rag_system(
     
     vector_store_path = "models/rag_system/vector_store.index"
     if use_chroma:
+        import chromadb
         vector_store = Chroma(persist_directory=vector_store_path, embedding_function=embeddings)
     else:
         if os.path.exists(vector_store_path):
