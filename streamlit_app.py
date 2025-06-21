@@ -16,8 +16,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Add src to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add src to path - This is no longer needed as the app is in the root
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.agent_runner import ESGAgent
 from src.data_prep import engineer_features
 
