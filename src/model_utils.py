@@ -15,9 +15,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
-import shap
-import lime
-import lime.lime_tabular
 from sentence_transformers import SentenceTransformer
 import torch
 import pickle
@@ -263,99 +260,9 @@ def evaluate_model(model, X: pd.DataFrame, y: pd.Series, cv_folds: int = 5) -> D
     logger.info(f"Evaluation complete. Accuracy: {accuracy:.3f}, F1: {f1:.3f}")
     return results
 
-def create_explanations(model, X: pd.DataFrame, sample_indices: List[int], 
-                       task: str, text_column: str = 'esg_claim_text') -> Dict[str, Any]:
-    """
-    Create SHAP and LIME explanations for sample predictions.
-    
-    Args:
-        model: Trained model
-        X: Feature DataFrame
-        sample_indices: Indices of samples to explain
-        task: Task name for saving
-        text_column: Name of text column
-        
-    Returns:
-        Dictionary with explanations
-    """
-    logger.info("Creating model explanations...")
-    
-    explanations = {}
-    
-    # SHAP explanations
-    try:
-        if hasattr(model, 'named_steps'):
-            # For pipeline models, use the preprocessor output
-            preprocessor = model.named_steps['preprocessor']
-            X_transformed = preprocessor.transform(X.iloc[sample_indices])
-            
-            # Create SHAP explainer
-            explainer = shap.LinearExplainer(model.named_steps['classifier'], X_transformed)
-            shap_values = explainer.shap_values(X_transformed)
-            
-            # Get feature names
-            if hasattr(preprocessor, 'get_feature_names_out'):
-                feature_names = preprocessor.get_feature_names_out()
-            else:
-                feature_names = [f'feature_{i}' for i in range(X_transformed.shape[1])]
-            
-            explanations['shap'] = {
-                'values': shap_values.tolist() if isinstance(shap_values, np.ndarray) else [sv.tolist() for sv in shap_values],
-                'feature_names': feature_names.tolist(),
-                'sample_texts': X.iloc[sample_indices][text_column].tolist()
-            }
-            
-            # Create SHAP plot
-            plt.figure(figsize=(10, 6))
-            shap.summary_plot(shap_values, X_transformed, feature_names=feature_names, show=False)
-            plt.title(f'SHAP Summary Plot - {task}')
-            plt.tight_layout()
-            plt.savefig(f'reports/figures/shap_summary_{task}.png', dpi=300, bbox_inches='tight')
-            plt.close()
-            
-    except Exception as e:
-        logger.warning(f"SHAP explanation failed: {e}")
-        explanations['shap'] = None
-    
-    # LIME explanations for text
-    try:
-        lime_explanations = []
-        for idx in sample_indices:
-            text = X.iloc[idx][text_column]
-            
-            # Create LIME explainer for text
-            explainer = lime.lime_text.LimeTextExplainer(class_names=['legitimate', 'greenwash'] if task == 'greenwash' 
-                                                        else ['Environmental', 'Social', 'Governance', 'Other'])
-            
-            # Define prediction function
-            def predict_proba(texts):
-                # Create temporary DataFrame with the text
-                temp_df = pd.DataFrame({text_column: texts})
-                # Add other features with median values
-                for col in X.columns:
-                    if col != text_column:
-                        temp_df[col] = X[col].median()
-                return model.predict_proba(temp_df)
-            
-            # Get explanation
-            exp = explainer.explain_instance(text, predict_proba, num_features=10)
-            lime_explanations.append({
-                'text': text,
-                'explanation': exp.as_list()
-            })
-        
-        explanations['lime'] = lime_explanations
-        
-    except Exception as e:
-        logger.warning(f"LIME explanation failed: {e}")
-        explanations['lime'] = None
-    
-    logger.info("Explanations created successfully")
-    return explanations
-
 def save_model(model, filepath: str) -> None:
-    """Save model to file."""
-    logger.info(f"Saving model to {filepath}")
+    """Save model to a file."""
+    logger.info(f"Saving model to {filepath}...")
     with open(filepath, 'wb') as f:
         pickle.dump(model, f)
     logger.info("Model saved successfully")
