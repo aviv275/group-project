@@ -35,6 +35,16 @@ def load_esg_agent(google_api_key=None):
         st.error(f"Failed to load ESG Agent: {e}")
         return None
 
+def get_risk_color(risk_level):
+    """Return color based on risk level."""
+    if risk_level == "HIGH":
+        return "#FF4B4B"  # Red
+    if risk_level == "MEDIUM":
+        return "#FFA500"  # Orange
+    if risk_level == "LOW":
+        return "#28A745"  # Green
+    return "#FFFFFF"    # Default
+
 def main():
     st.set_page_config(page_title="ESG Fraud Detection", layout="wide")
     st.title("🌱 ESG Fraud Detection Platform")
@@ -98,17 +108,23 @@ def main():
                         
                         # Overall assessment
                         assessment = results.get("overall_assessment", {})
+                        risk_level = assessment.get("risk_level", "N/A")
+                        risk_score = assessment.get("overall_risk_score", 0.0)
+                        fraud_alert = assessment.get("fraud_alert", "N/A")
+                        
                         col1, col2, col3 = st.columns(3)
                         
                         with col1:
-                            risk_level = assessment.get("risk_level", "N/A")
-                            risk_score = assessment.get("overall_risk_score", 0.0)
-                            st.metric("Risk Level", risk_level, f"Score: {risk_score:.3f}")
-                        
+                            color = get_risk_color(risk_level)
+                            st.markdown(f'**Risk Level**')
+                            st.markdown(f'<p style="color:{color}; font-size: 2em; font-weight: bold; margin-bottom: -10px;">{risk_level}</p>', unsafe_allow_html=True)
+                            st.markdown(f'<p style="color:{color};">Score: {risk_score:.3f}</p>', unsafe_allow_html=True)
+
                         with col2:
-                            fraud_alert = assessment.get("fraud_alert", "N/A")
-                            st.metric("Fraud Alert", fraud_alert)
-                        
+                            color = get_risk_color(risk_level)
+                            st.markdown('**Fraud Alert**')
+                            st.markdown(f'<p style="color:{color}; font-size: 1.2em; font-weight: bold; white-space: normal;">{fraud_alert}</p>', unsafe_allow_html=True)
+
                         with col3:
                             model_preds = results.get("model_predictions", {})
                             category = model_preds.get("claim_category", "N/A")
@@ -136,10 +152,10 @@ def main():
                             
                             if google_api_key:
                                 rag_text = rag_analysis.get("analysis", "No analysis available")
-                                st.write("**RAG Analysis Details:**")
-                                st.text_area("Analysis", rag_text, height=200, disabled=True)
+                                with st.expander("**RAG Analysis Details**", expanded=True):
+                                    st.markdown(rag_text)
                             else:
-                                st.write("- RAG analysis disabled (no API key)")
+                                st.info("RAG analysis disabled (no API key). Enable by providing a Google API key.")
                         
                         # Recommendations
                         st.subheader("Recommendations")
@@ -186,7 +202,8 @@ def main():
                                     'rag_risk': result.get('rag_analysis', {}).get('rag_risk_score', 0.0)
                                 })
                             
-                            progress_bar.progress((idx + 1) / len(df))
+                            current_progress = float(idx + 1) / float(len(df))
+                            progress_bar.progress(current_progress)
                         
                         results_df = pd.DataFrame(results_list)
                         st.subheader("Batch Analysis Results")

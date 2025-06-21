@@ -404,23 +404,108 @@ class ESG_RAG_System:
     def analyze_claim(self, claim_text: str) -> Dict[str, Any]:
         """Analyzes a claim using the RAG chain."""
         if not self.rag_chain:
-            return {
-                "rag_risk_score": 0.0,
-                "analysis": "RAG system not initialized (no API key).",
-                "sources": []
-            }
+            # When no LLM is available, use keyword-based fallback analysis
+            return self._fallback_keyword_analysis(claim_text)
+        
         try:
             result = self.rag_chain({"query": claim_text})
-            # Simple risk scoring based on whether sources are found
-            risk_score = 0.0 if result["source_documents"] else 0.5
+            
+            # Improved risk scoring logic
+            source_docs = result.get("source_documents", [])
+            analysis_text = result.get("result", "")
+            
+            # Calculate risk based on multiple factors
+            risk_score = self._calculate_rag_risk(claim_text, source_docs, analysis_text)
+            
             return {
                 "rag_risk_score": risk_score,
-                "analysis": result.get("result", "No analysis generated."),
-                "sources": [doc.metadata.get('source', 'Unknown') for doc in result["source_documents"]]
+                "analysis": analysis_text,
+                "sources": [doc.metadata.get('source', 'Unknown') for doc in source_docs]
             }
         except Exception as e:
             logger.error(f"RAG analysis failed: {e}")
-            return {"rag_risk_score": 0.0, "analysis": "RAG analysis failed.", "sources": []}
+            return self._fallback_keyword_analysis(claim_text)
+    
+    def _fallback_keyword_analysis(self, claim_text: str) -> Dict[str, Any]:
+        """Fallback analysis when LLM is not available."""
+        # Enhanced keyword-based risk analysis
+        risk_keywords = [
+            'vague', 'unclear', 'unspecified', 'general', 'commitment', 
+            'will', 'plan', 'aim', 'target', 'goal', 'strive', 'endeavor'
+        ]
+        high_risk_keywords = [
+            'guarantee', 'promise', 'ensure', 'definitely', 'certainly',
+            '100%', 'fully', 'completely', 'absolutely', 'never', 'always'
+        ]
+        extreme_claims = [
+            'carbon neutral', 'net zero', 'zero emissions', '100% renewable',
+            'fully sustainable', 'completely green'
+        ]
+        
+        claim_lower = claim_text.lower()
+        risk_score = 0.0
+        
+        # Check for extreme claims (highest risk)
+        for keyword in extreme_claims:
+            if keyword in claim_lower:
+                risk_score += 0.4
+                break  # Only count once for extreme claims
+        
+        # Check for high-risk keywords
+        for keyword in high_risk_keywords:
+            if keyword in claim_lower:
+                risk_score += 0.2
+        
+        # Check for vague language
+        for keyword in risk_keywords:
+            if keyword in claim_lower:
+                risk_score += 0.1
+        
+        # Normalize risk score
+        risk_score = min(1.0, risk_score)
+        
+        return {
+            "rag_risk_score": risk_score,
+            "analysis": f"Keyword-based analysis: Risk score {risk_score:.2f}. " + 
+                       ("High risk indicators detected." if risk_score > 0.5 else 
+                        "Moderate risk indicators detected." if risk_score > 0.2 else 
+                        "Low risk indicators detected."),
+            "sources": ["Keyword analysis (no LLM available)"]
+        }
+    
+    def _calculate_rag_risk(self, claim_text: str, source_docs: list, analysis_text: str) -> float:
+        """Calculate RAG risk score based on multiple factors."""
+        risk_score = 0.0
+        
+        # Factor 1: Number of relevant sources found (more sources = lower risk)
+        if source_docs:
+            # If sources are found, base risk on source relevance
+            avg_source_score = sum(doc.metadata.get('score', 0.5) for doc in source_docs) / len(source_docs)
+            risk_score += (1.0 - avg_source_score) * 0.3  # Higher relevance = lower risk
+        else:
+            # No sources found = higher risk (claim not supported by regulations)
+            risk_score += 0.6
+        
+        # Factor 2: Analysis sentiment (negative analysis = higher risk)
+        negative_indicators = ['vague', 'unclear', 'unsupported', 'risky', 'concerning', 'problematic']
+        positive_indicators = ['clear', 'supported', 'compliant', 'transparent', 'verified']
+        
+        analysis_lower = analysis_text.lower()
+        negative_count = sum(1 for indicator in negative_indicators if indicator in analysis_lower)
+        positive_count = sum(1 for indicator in positive_indicators if indicator in analysis_lower)
+        
+        if negative_count > positive_count:
+            risk_score += 0.3
+        elif positive_count > negative_count:
+            risk_score -= 0.2  # Reduce risk for positive indicators
+        
+        # Factor 3: Claim characteristics
+        claim_lower = claim_text.lower()
+        if any(extreme in claim_lower for extreme in ['100%', 'fully', 'completely', 'guarantee']):
+            risk_score += 0.2
+        
+        # Normalize to 0-1 range
+        return max(0.0, min(1.0, risk_score))
 
 def download_esg_corpora(docs_path: str = "business") -> List[Document]:
     """
