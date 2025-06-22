@@ -1,0 +1,67 @@
+[
+  {
+    "title": "GRI Standards - Environmental",
+    "chunks": [
+      "The Global Reporting Initiative (GRI) provides comprehensive standards for environmental reporting. Organizations should report on their environmental impacts including emissions, energy use, water consumption, and biodiversity. Claims must be supported by verifiable data and should include specific targets and timelines."
+    ],
+    "tags": [
+      "environmental",
+      "reporting",
+      "standards",
+      "GRI"
+    ],
+    "original_content": "The Global Reporting Initiative (GRI) provides comprehensive standards for environmental reporting. Organizations should report on their environmental impacts including emissions, energy use, water consumption, and biodiversity. Claims must be supported by verifiable data and should include specific targets and timelines."
+  },
+  {
+    "title": "SASB Standards - Social",
+    "chunks": [
+      "The Sustainability Accounting Standards Board (SASB) focuses on financially material sustainability information. Social topics include labor practices, human rights, and community relations. Companies must provide evidence-based claims and avoid vague or unsubstantiated statements."
+    ],
+    "tags": [
+      "social",
+      "accounting",
+      "standards",
+      "SASB"
+    ],
+    "original_content": "The Sustainability Accounting Standards Board (SASB) focuses on financially material sustainability information. Social topics include labor practices, human rights, and community relations. Companies must provide evidence-based claims and avoid vague or unsubstantiated statements."
+  },
+  {
+    "title": "TCFD Framework - Governance",
+    "chunks": [
+      "The Task Force on Climate-related Financial Disclosures (TCFD) provides a framework for climate-related financial risk disclosures. Governance aspects include board oversight, risk management processes, and strategic planning. Claims should be transparent and aligned with business strategy."
+    ],
+    "tags": [
+      "governance",
+      "climate",
+      "risk",
+      "TCFD"
+    ],
+    "original_content": "The Task Force on Climate-related Financial Disclosures (TCFD) provides a framework for climate-related financial risk disclosures. Governance aspects include board oversight, risk management processes, and strategic planning. Claims should be transparent and aligned with business strategy."
+  },
+  {
+    "title": "Greenwashing Prevention Guidelines",
+    "chunks": [
+      "To prevent greenwashing, organizations should avoid vague environmental claims, provide specific evidence, use clear and accurate language, avoid cherry-picking data, and ensure claims are relevant to the product or service. All claims should be verifiable and substantiated."
+    ],
+    "tags": [
+      "greenwashing",
+      "prevention",
+      "guidelines",
+      "compliance"
+    ],
+    "original_content": "To prevent greenwashing, organizations should avoid vague environmental claims, provide specific evidence, use clear and accurate language, avoid cherry-picking data, and ensure claims are relevant to the product or service. All claims should be verifiable and substantiated."
+  },
+  {
+    "title": "ESG Reporting Best Practices",
+    "chunks": [
+      "Effective ESG reporting requires transparency, accuracy, completeness, and consistency. Reports should include clear metrics, targets, and progress indicators. Organizations should avoid misleading statements and ensure all claims are supported by reliable data sources."
+    ],
+    "tags": [
+      "reporting",
+      "best practices",
+      "transparency",
+      "accuracy"
+    ],
+    "original_content": "Effective ESG reporting requires transparency, accuracy, completeness, and consistency. Reports should include clear metrics, targets, and progress indicators. Organizations should avoid misleading statements and ensure all claims are supported by reliable data sources."
+  }
+]
