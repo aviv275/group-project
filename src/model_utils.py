@@ -90,7 +90,7 @@ class BaselineModel:
         # Create full pipeline
         self.model = Pipeline([
             ('preprocessor', preprocessor),
-            ('classifier', LogisticRegression(random_state=RANDOM_SEED, max_iter=1000))
+            ('classifier', LogisticRegression(random_state=RANDOM_SEED, max_iter=1000, class_weight='balanced'))
         ])
         
         # Fit model
@@ -105,23 +105,35 @@ class BaselineModel:
         
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Make predictions."""
+        if self.model is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
         return self.model.predict(X)
     
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         """Get prediction probabilities."""
+        if self.model is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
         return self.model.predict_proba(X)
     
     def get_feature_importance(self) -> Dict[str, float]:
         """Get feature importance scores."""
-        if hasattr(self.model, 'named_steps'):
+        if self.model is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
+            
+        if hasattr(self.model, 'named_steps') and hasattr(self.model.named_steps['classifier'], 'coef_'):
             classifier = self.model.named_steps['classifier']
-        else:
-            classifier = self.model
-        
-        if hasattr(classifier, 'coef_'):
-            importance = classifier.coef_[0] if classifier.coef_.shape[0] == 1 else classifier.coef_
+            
+            # Handle binary vs. multi-class coefficients
+            if classifier.coef_.shape[0] == 1:
+                importance = classifier.coef_[0]
+            else:
+                # For multi-class, we might need a different approach,
+                # but for now, let's take the mean across classes.
+                importance = classifier.coef_.mean(axis=0)
+
             feature_names = self.feature_names or [f'feature_{i}' for i in range(len(importance))]
             return dict(zip(feature_names, importance))
+        
         return {}
 
 class TransformerModel:
@@ -172,13 +184,15 @@ class TransformerModel:
             combined_features = embeddings
         
         # Train classifier
-        self.classifier = LogisticRegression(random_state=RANDOM_SEED, max_iter=1000)
+        self.classifier = LogisticRegression(random_state=RANDOM_SEED, max_iter=1000, class_weight='balanced')
         self.classifier.fit(combined_features, y)
         
         logger.info("Transformer model training complete")
         
     def predict(self, X: pd.DataFrame, text_column: str = 'esg_claim_text') -> np.ndarray:
         """Make predictions."""
+        if self.transformer is None or self.classifier is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
         texts = X[text_column].tolist()
         embeddings = self.transformer.encode(texts)
         
@@ -194,6 +208,8 @@ class TransformerModel:
     
     def predict_proba(self, X: pd.DataFrame, text_column: str = 'esg_claim_text') -> np.ndarray:
         """Get prediction probabilities."""
+        if self.transformer is None or self.classifier is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
         texts = X[text_column].tolist()
         embeddings = self.transformer.encode(texts)
         

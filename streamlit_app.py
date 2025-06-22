@@ -26,14 +26,19 @@ from src.data_prep import engineer_features
 def load_esg_agent(google_api_key=None):
     """Load the ESG agent with optional API key."""
     try:
+        # Use the tuned gradient boosting model for both category and greenwashing
+        # since we don't have separate models for each task
+        model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
+        
         agent = ESGAgent(
-            category_model_path="models/category_classifier.pkl",
-            greenwash_model_path="models/greenwashing_classifier.pkl",
+            category_model_path=model_path,
+            greenwash_model_path=model_path,
             google_api_key=google_api_key
         )
         return agent
     except Exception as e:
         st.error(f"Failed to load ESG Agent: {e}")
+        st.error("This might be due to model compatibility issues. Please ensure all required models are available.")
         return None
 
 def get_risk_color(risk_level):
@@ -212,7 +217,7 @@ def main():
                 st.write("✅ File uploaded successfully!")
                 st.write(f"📊 **File Preview** ({len(df)} rows):")
                 st.dataframe(df.head())
-                
+
                 # Check if required column exists
                 if 'esg_claim_text' not in df.columns:
                     st.error("❌ Error: CSV file must contain a column named 'esg_claim_text'")
@@ -255,7 +260,7 @@ def main():
                                     df_to_analyze = df
                                 
                                 total_claims = len(df_to_analyze)
-                                
+                        
                                 for idx, row in df_to_analyze.iterrows():
                                     claim_text = row.get('esg_claim_text', '')
                                     if claim_text:
@@ -291,7 +296,7 @@ def main():
                                     
                                     current_progress = float(idx + 1) / float(total_claims)
                                     progress_bar.progress(current_progress)
-                                
+                        
                                 status_text.text("✅ Analysis complete!")
                                 
                                 # Create results dataframe
@@ -299,19 +304,19 @@ def main():
                                 
                                 # Display results
                                 st.subheader("📊 Batch Analysis Results")
-                                
+                        
                                 # Summary statistics
                                 st.write("**📈 Summary Statistics:**")
                                 col1, col2, col3, col4 = st.columns(4)
-                                
+                        
                                 with col1:
                                     avg_risk = results_df['risk_score'].mean()
                                     st.metric("Average Risk Score", f"{avg_risk:.3f}")
-                                
+                        
                                 with col2:
                                     high_risk_count = len(results_df[results_df['risk_score'] > 0.5])
                                     st.metric("High Risk Claims", high_risk_count)
-                                
+                        
                                 with col3:
                                     fraud_alerts = len(results_df[results_df['fraud_alert'] == 'HIGH'])
                                     st.metric("Fraud Alerts", fraud_alerts)
@@ -372,7 +377,7 @@ def main():
                                     )
                                 except ImportError:
                                     st.info("📝 Install openpyxl for Excel export: `pip install openpyxl`")
-                                    
+                            
                             except Exception as e:
                                 st.error(f"❌ Batch analysis failed: {e}")
                                 st.write("**Troubleshooting:**")

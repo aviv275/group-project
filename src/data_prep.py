@@ -13,6 +13,10 @@ import re
 from sklearn.preprocessing import LabelEncoder
 import logging
 import json
+from sentence_transformers import SentenceTransformer
+from textblob import TextBlob
+import pickle
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -164,6 +168,59 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     
     logger.info(f"Data cleaning complete. Removed {removed_duplicates} duplicates")
     return df_clean
+
+def add_text_features(texts):
+    """Add text length (number of words and characters) and sentiment polarity"""
+    lengths = np.array([len(t) for t in texts]).reshape(-1, 1)
+    word_counts = np.array([len(t.split()) for t in texts]).reshape(-1, 1)
+    sentiments = np.array([TextBlob(t).sentiment.polarity for t in texts]).reshape(-1, 1)
+    return np.hstack([lengths, word_counts, sentiments])
+
+def engineer_features_sentence_transformer(df: pd.DataFrame) -> np.ndarray:
+    """
+    Engineer features for sentence transformer models.
+    
+    This function:
+    1. Loads the sentence transformer model
+    2. Generates embeddings for the text
+    3. Adds additional text features
+    4. Returns the combined feature array
+    
+    Args:
+        df: DataFrame with 'esg_claim_text' column
+        
+    Returns:
+        numpy array with combined features
+    """
+    logger.info("Engineering features for sentence transformer models...")
+    
+    if 'esg_claim_text' not in df.columns:
+        raise ValueError("DataFrame must contain 'esg_claim_text' column")
+    
+    # Get text data
+    texts = df['esg_claim_text'].values
+    
+    # Load sentence transformer model from HuggingFace
+    try:
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        logger.info("Loaded sentence transformer model from HuggingFace")
+    except Exception as e:
+        logger.error(f"Failed to load sentence transformer model: {e}")
+        raise
+    
+    # Generate embeddings
+    logger.info("Generating sentence embeddings...")
+    embeddings = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
+    
+    # Add extra text features
+    logger.info("Adding text features...")
+    extra_features = add_text_features(texts)
+    
+    # Combine features
+    combined_features = np.hstack([embeddings, extra_features])
+    
+    logger.info(f"Feature engineering complete. Shape: {combined_features.shape}")
+    return combined_features
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """

@@ -1,0 +1,15 @@
+{
+  "best_params": {
+    "C": 100,
+    "gamma": 1,
+    "kernel": "rbf"
+  },
+  "best_score": 0.6940526315789473,
+  "test_performance": {
+    "accuracy": 0.55,
+    "precision": 0.36363636363636365,
+    "recall": 0.26666666666666666,
+    "f1": 0.3076923076923077,
+    "roc_auc": 0.5693333333333334
+  }
+}

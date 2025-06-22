@@ -67,12 +67,12 @@ def main():
             'description': 'Data Quality Analysis and Cleaning'
         },
         {
-            'command': f'GOOGLE_API_KEY="{args.google_key}" python3 src/train_pipeline.py --data data/clean_claims.parquet --output models --task both --model baseline',
-            'description': 'Model Training (Baseline Models)'
+            'command': 'python3 run_sentence_transformer_model.py',
+            'description': 'Model Training (Sentence Transformers + SMOTE)'
         },
         {
-            'command': f'GOOGLE_API_KEY="{args.google_key}" python3 final_agent_test.py',
-            'description': 'AI Agent Testing and Validation'
+            'command': 'python3 test_sentence_transformer_results.py',
+            'description': 'Model Validation and Testing'
         }
     ]
     
@@ -96,14 +96,19 @@ def main():
         print("🎉 All pipeline steps completed successfully!")
         print("\n📁 Generated Files:")
         print("  - data/clean_claims.parquet (cleaned data)")
-        print("  - data/clean_claims_features.parquet (engineered features)")
-        print("  - models/greenwashing_classifier.pkl (trained model)")
+        print("  - metrics/svm_gridsearch_results.json (SVM model results)")
+        print("  - models/ (trained models)")
         print("  - reports/data_quality_metrics.json (quality metrics)")
         print("  - reports/figures/ (visualizations)")
         print("\n🚀 Next Steps:")
         print("  - Run 'cd app && streamlit run streamlit_app.py' to launch the web interface")
         print("  - Use 'python3 final_agent_test.py' to test the AI agent")
         print("  - Open notebooks/ for detailed analysis")
+        print("\n📊 Model Performance:")
+        print("  - Sentence Transformer embeddings (all-MiniLM-L6-v2)")
+        print("  - SMOTE for class balancing")
+        print("  - SVM with hyperparameter tuning")
+        print("  - Expected ROC-AUC: ~0.569")
     else:
         print(f"⚠️ Pipeline completed with {len(pipeline_steps) - success_count} failures")
         print("Check the error messages above and fix any issues.")
