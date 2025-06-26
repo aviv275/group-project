@@ -22,6 +22,7 @@ import pickle
 import json
 import os
 from datetime import datetime
+from sklearn.feature_extraction.text import TfidfVectorizer
 warnings.filterwarnings('ignore')
 
 # Set style and random seeds
@@ -68,20 +69,52 @@ def main():
     # Generate sentence-transformer embeddings
     print("\n=== GENERATING SENTENCE EMBEDDINGS ===\n")
     
-    # Load sentence transformer model
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    print("Model loaded successfully!")
-    
-    # Generate embeddings for training and test sets
-    print("Generating embeddings for training set...")
-    X_train_emb = model.encode(X_train, show_progress_bar=True, convert_to_numpy=True)
-    
-    print("Generating embeddings for test set...")
-    X_test_emb = model.encode(X_test, show_progress_bar=True, convert_to_numpy=True)
-    
-    print(f"Training embeddings shape: {X_train_emb.shape}")
-    print(f"Test embeddings shape: {X_test_emb.shape}")
-    print(f"Embedding dimension: {X_train_emb.shape[1]}")
+    # Load sentence transformer model with fallback
+    try:
+        print("Attempting to load sentence transformer model...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        print("Model loaded successfully!")
+        
+        # Generate embeddings for training and test sets
+        print("Generating embeddings for training set...")
+        X_train_emb = model.encode(X_train, show_progress_bar=True, convert_to_numpy=True)
+        
+        print("Generating embeddings for test set...")
+        X_test_emb = model.encode(X_test, show_progress_bar=True, convert_to_numpy=True)
+        
+        print(f"Training embeddings shape: {X_train_emb.shape}")
+        print(f"Test embeddings shape: {X_test_emb.shape}")
+        print(f"Embedding dimension: {X_train_emb.shape[1]}")
+        
+        use_sentence_transformers = True
+        
+    except Exception as e:
+        print(f"Failed to load sentence transformer model: {e}")
+        print("Falling back to TF-IDF features...")
+        
+        # Fallback to TF-IDF
+        # Create TF-IDF vectorizer
+        tfidf = TfidfVectorizer(
+            max_features=1000,
+            ngram_range=(1, 2),
+            stop_words='english',
+            min_df=2,
+            max_df=0.95
+        )
+        
+        # Fit and transform training data
+        print("Generating TF-IDF features for training set...")
+        X_train_emb = tfidf.fit_transform(X_train).toarray()
+        
+        # Transform test data
+        print("Generating TF-IDF features for test set...")
+        X_test_emb = tfidf.transform(X_test).toarray()
+        
+        print(f"Training TF-IDF shape: {X_train_emb.shape}")
+        print(f"Test TF-IDF shape: {X_test_emb.shape}")
+        print(f"TF-IDF dimension: {X_train_emb.shape[1]}")
+        
+        use_sentence_transformers = False
     
     # Add extra features (length, word count, sentiment)
     print("\n=== ADDING EXTRA TEXT FEATURES ===\n")
@@ -152,6 +185,9 @@ def main():
     print("=== CREATING VISUALIZATIONS ===\n")
     os.makedirs('reports/figures', exist_ok=True)
     
+    # Determine feature type for titles and filenames
+    feature_type = "Sentence Embeddings" if use_sentence_transformers else "TF-IDF"
+    
     metrics = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']
     fig, ax = plt.subplots(figsize=(12, 6))
     
@@ -164,16 +200,17 @@ def main():
     
     ax.set_xlabel('Metrics')
     ax.set_ylabel('Score')
-    ax.set_title('Model Comparison with Sentence Embeddings + SMOTE')
+    ax.set_title(f'Model Comparison with {feature_type} + SMOTE')
     ax.set_xticks(x + width * 1.5)
     ax.set_xticklabels(metrics)
     ax.legend()
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('reports/figures/model_comparison_sentence_embeddings_smote.png', dpi=300, bbox_inches='tight')
+    filename = f'model_comparison_{feature_type.lower().replace(" ", "_")}_smote.png'
+    plt.savefig(f'reports/figures/{filename}', dpi=300, bbox_inches='tight')
     plt.close()
-    print("Saved: model_comparison_sentence_embeddings_smote.png")
+    print(f"Saved: {filename}")
     
     # Perform hyperparameter tuning
     print("\n=== HYPERPARAMETER TUNING ===\n")
@@ -303,7 +340,7 @@ def main():
     bars = ax.bar(names, means, yerr=stds, capsize=5, alpha=0.7)
     ax.set_xlabel('Models')
     ax.set_ylabel('ROC-AUC Score')
-    ax.set_title('Cross-Validation ROC-AUC Scores (Sentence Embeddings + SMOTE)')
+    ax.set_title(f'Cross-Validation ROC-AUC Scores ({feature_type} + SMOTE)')
     ax.set_ylim(0, 1)
     ax.grid(True, alpha=0.3)
     
@@ -315,9 +352,10 @@ def main():
     
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig('reports/figures/cv_scores_sentence_embeddings_smote.png', dpi=300, bbox_inches='tight')
+    cv_filename = f'cv_scores_{feature_type.lower().replace(" ", "_")}_smote.png'
+    plt.savefig(f'reports/figures/{cv_filename}', dpi=300, bbox_inches='tight')
     plt.close()
-    print("Saved: cv_scores_sentence_embeddings_smote.png")
+    print(f"Saved: {cv_filename}")
     
     # Detailed analysis of the best model
     print("\n=== MODEL PERFORMANCE ANALYSIS ===\n")
@@ -341,9 +379,10 @@ def main():
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
     plt.tight_layout()
-    plt.savefig('reports/figures/best_model_confusion_matrix_sentence_embeddings_smote.png', dpi=300, bbox_inches='tight')
+    cm_filename = f'best_model_confusion_matrix_{feature_type.lower().replace(" ", "_")}_smote.png'
+    plt.savefig(f'reports/figures/{cm_filename}', dpi=300, bbox_inches='tight')
     plt.close()
-    print("Saved: best_model_confusion_matrix_sentence_embeddings_smote.png")
+    print(f"Saved: {cm_filename}")
     
     # ROC curve
     y_pred_proba_tuned = tuned_model.predict_proba(X_test_full)[:, 1]
@@ -357,9 +396,10 @@ def main():
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('reports/figures/best_model_roc_curve_sentence_embeddings_smote.png', dpi=300, bbox_inches='tight')
+    roc_filename = f'best_model_roc_curve_{feature_type.lower().replace(" ", "_")}_smote.png'
+    plt.savefig(f'reports/figures/{roc_filename}', dpi=300, bbox_inches='tight')
     plt.close()
-    print("Saved: best_model_roc_curve_sentence_embeddings_smote.png")
+    print(f"Saved: {roc_filename}")
     
     # Feature importance analysis (for tree-based models)
     if hasattr(best_model, 'feature_importances_'):
@@ -377,12 +417,12 @@ def main():
         plt.hist(feature_importance, bins=50, alpha=0.7, color='skyblue')
         plt.xlabel('Feature Importance')
         plt.ylabel('Frequency')
-        plt.title('Distribution of Feature Importance (Sentence Embeddings)')
+        plt.title(f'Distribution of Feature Importance ({feature_type})')
         plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        plt.savefig('reports/figures/feature_importance_distribution_sentence_embeddings_smote.png', dpi=300, bbox_inches='tight')
+        fi_filename = f'feature_importance_distribution_{feature_type.lower().replace(" ", "_")}_smote.png'
+        plt.savefig(f'reports/figures/{fi_filename}', dpi=300, bbox_inches='tight')
         plt.close()
-        print("Saved: feature_importance_distribution_sentence_embeddings_smote.png")
+        print(f"Saved: {fi_filename}")
     
     # Save models and metrics
     print("\n=== SAVING MODELS AND METRICS ===\n")
@@ -391,31 +431,37 @@ def main():
     os.makedirs('models', exist_ok=True)
     os.makedirs('metrics', exist_ok=True)
     
-    # Save sentence transformer model
-    with open('models/sentence_transformer_model.pkl', 'wb') as f:
-        pickle.dump(model, f)
-    print("Saved: sentence_transformer_model.pkl")
+    # Save sentence transformer model (only if we used it)
+    if use_sentence_transformers:
+        with open('models/sentence_transformer_model.pkl', 'wb') as f:
+            pickle.dump(model, f)
+        print("Saved: sentence_transformer_model.pkl")
     
     # Save all models
+    feature_suffix = feature_type.lower().replace(" ", "_")
     for name, model in models.items():
-        filename = f'models/{name.lower().replace(" ", "_")}_sentence_embeddings.pkl'
+        filename = f'models/{name.lower().replace(" ", "_")}_{feature_suffix}.pkl'
         with open(filename, 'wb') as f:
             pickle.dump(model, f)
         print(f"Saved: {filename}")
     
     # Save tuned model
-    tuned_filename = f'models/tuned_{best_model_name.lower().replace(" ", "_")}_sentence_embeddings.pkl'
+    tuned_filename = f'models/tuned_{best_model_name.lower().replace(" ", "_")}_{feature_suffix}.pkl'
     with open(tuned_filename, 'wb') as f:
         pickle.dump(tuned_model, f)
     print(f"Saved: {tuned_filename}")
     
     # Save grid search results
-    with open('models/grid_search_results_sentence_embeddings.pkl', 'wb') as f:
+    grid_filename = f'models/grid_search_results_{feature_suffix}.pkl'
+    with open(grid_filename, 'wb') as f:
         pickle.dump(grid_search, f)
-    print("Saved: grid_search_results_sentence_embeddings.pkl")
+    print(f"Saved: {grid_filename}")
     
     # Save advanced metrics
     print("\n=== SAVING METRICS ===\n")
+    
+    # Determine embedding model name
+    embedding_model_name = 'all-MiniLM-L6-v2' if use_sentence_transformers else 'TF-IDF'
     
     advanced_metrics = {
         'model_comparison': results,
@@ -432,18 +478,19 @@ def main():
             'test_samples': len(X_test),
             'greenwashing_rate': df_model['greenwashing_flag'].mean(),
             'feature_dimension': X_train_full.shape[1],
-            'feature_type': 'Sentence Embeddings + Text Features',
-            'embedding_model': 'all-MiniLM-L6-v2',
+            'feature_type': f'{feature_type} + Text Features',
+            'embedding_model': embedding_model_name,
             'class_balancing': 'SMOTE'
         }
     }
     
-    with open('metrics/advanced_metrics_sentence_embeddings_smote.json', 'w') as f:
+    metrics_filename = f'metrics/advanced_metrics_{feature_suffix}_smote.json'
+    with open(metrics_filename, 'w') as f:
         json.dump(advanced_metrics, f, indent=2)
-    print("Saved: advanced_metrics_sentence_embeddings_smote.json")
+    print(f"Saved: {metrics_filename}")
     
     # Print comprehensive summary
-    print("\n=== ADVANCED MODELS SUMMARY (SENTENCE EMBEDDINGS + SMOTE) ===\n")
+    print(f"\n=== ADVANCED MODELS SUMMARY ({feature_type.upper()} + SMOTE) ===\n")
     
     print("1. DATASET:")
     print(f"   - Total samples: {advanced_metrics['dataset_info']['total_samples']}")
@@ -469,7 +516,10 @@ def main():
     print(f"   - Test F1-Score: {advanced_metrics['best_model']['test_performance']['f1']:.3f}")
     
     print("\n4. KEY INSIGHTS:")
-    print("   - Sentence embeddings provide rich semantic representations")
+    if use_sentence_transformers:
+        print("   - Sentence embeddings provide rich semantic representations")
+    else:
+        print("   - TF-IDF features provide effective text representation")
     print("   - SMOTE effectively balances the training data")
     print("   - Hyperparameter tuning improves model performance")
     print("   - Cross-validation confirms model stability")
@@ -478,9 +528,12 @@ def main():
     print("   - Models saved and ready for deployment")
     print("   - Proceed to RAG integration")
     print("   - Consider ensemble methods for further improvement")
-    print("   - Explore other sentence transformer models")
+    if use_sentence_transformers:
+        print("   - Explore other sentence transformer models")
+    else:
+        print("   - Consider trying sentence transformers when network is available")
     
-    print(f"\n✅ Model tuning with sentence embeddings and SMOTE completed successfully at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"\n✅ Model tuning with {feature_type.lower()} and SMOTE completed successfully at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 if __name__ == "__main__":
     main() 

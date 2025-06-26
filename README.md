@@ -59,7 +59,23 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Data Preparation
+### 2. Network Connectivity & Fallback Mechanism
+
+The platform includes a robust fallback mechanism for network connectivity issues:
+
+- **Automatic Fallback**: If sentence transformer models can't be downloaded due to network issues, the system automatically falls back to TF-IDF features
+- **Graceful Degradation**: The pipeline continues to work even without internet connectivity
+- **Feature Compatibility**: All models work with both sentence embeddings and TF-IDF features
+
+To test the fallback mechanism:
+```bash
+# Test fallback functionality
+python3 test_fallback_mechanism.py
+```
+
+**Note**: The system will automatically detect network connectivity and choose the best available feature extraction method.
+
+### 3. Data Preparation
 
 ```bash
 # Run data quality notebook
@@ -67,7 +83,7 @@ jupyter notebook notebooks/01_data_quality.ipynb
 # Execute all cells to clean and prepare the data
 ```
 
-### 3. Train Models
+### 4. Train Models
 
 ```bash
 # Train baseline models
@@ -283,12 +299,21 @@ export OPENAI_API_KEY="your-api-key-here"
    python src/train_pipeline.py --data data/clean_claims.parquet
    ```
 
-3. **RAG System Issues**: Verify sentence-transformers installation
+3. **Network Connectivity Issues**: The system automatically falls back to TF-IDF features
+   ```bash
+   # Test fallback mechanism
+   python3 test_fallback_mechanism.py
+   
+   # If sentence transformers fail to download, TF-IDF will be used automatically
+   # No manual intervention required
+   ```
+
+4. **RAG System Issues**: Verify sentence-transformers installation
    ```bash
    pip install sentence-transformers
    ```
 
-4. **Streamlit App Errors**: Check model files exist
+5. **Streamlit App Errors**: Check model files exist
    ```bash
    ls models/
    ```
