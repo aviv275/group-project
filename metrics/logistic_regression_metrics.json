@@ -1,0 +1,58 @@
+{
+  "best_parameters": {
+    "classifier__C": 0.01,
+    "classifier__penalty": "l2"
+  },
+  "cv_auc": 0.5008839406207827,
+  "cv_gini": 0.00176788124156535,
+  "test_auc": 0.6053333333333333,
+  "test_gini": 0.21066666666666656,
+  "classification_report": {
+    "0": {
+      "precision": 0.7,
+      "recall": 0.56,
+      "f1-score": 0.6222222222222222,
+      "support": 25.0
+    },
+    "1": {
+      "precision": 0.45,
+      "recall": 0.6,
+      "f1-score": 0.5142857142857142,
+      "support": 15.0
+    },
+    "accuracy": 0.575,
+    "macro avg": {
+      "precision": 0.575,
+      "recall": 0.5800000000000001,
+      "f1-score": 0.5682539682539682,
+      "support": 40.0
+    },
+    "weighted avg": {
+      "precision": 0.60625,
+      "recall": 0.575,
+      "f1-score": 0.5817460317460317,
+      "support": 40.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      14,
+      11
+    ],
+    [
+      6,
+      9
+    ]
+  ],
+  "feature_columns": [
+    "esg_claim_text",
+    "claim_category",
+    "project_location",
+    "claimed_metric_type",
+    "claimed_value",
+    "report_year",
+    "report_sentiment_score",
+    "claim_length"
+  ],
+  "target_column": "greenwashing_flag"
+}

@@ -26,13 +26,15 @@ from src.data_prep import engineer_features
 def load_esg_agent(google_api_key=None):
     """Load the ESG agent with optional API key."""
     try:
-        # Use the tuned gradient boosting model for both category and greenwashing
-        # since we don't have separate models for each task
-        model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
+        # Use both Gradient Boosting and Logistic Regression models
+        gb_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
+        lr_model_path = "models/logistic_regression_sentence_embeddings.pkl"
+        category_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"  # Use GB for category too
         
         agent = ESGAgent(
-            category_model_path=model_path,
-            greenwash_model_path=model_path,
+            category_model_path=category_model_path,
+            greenwash_gb_model_path=gb_model_path,
+            greenwash_lr_model_path=lr_model_path,
             google_api_key=google_api_key
         )
         return agent
@@ -97,17 +99,35 @@ def main():
         else:
             st.info("ℹ️ Basic Analysis Mode: Using ML models only (no LLM analysis)")
         
+        # --- User Inputs for ALL LR Features ---
         claim_text = st.text_area(
             "Enter ESG Claim Text:", 
             height=150, 
             placeholder="e.g., We achieved 100% carbon neutrality through innovative renewable energy solutions..."
         )
+        claim_category = st.selectbox("Claim Category", ["Environmental", "Social", "Governance", "Other"])
+        project_location = st.text_input("Project Location", value="USA")
+        claimed_metric_type = st.text_input("Claimed Metric Type", value="carbon_offset")
+        claimed_value = st.number_input("Claimed Value", value=0.0)
+        report_year = st.number_input("Report Year", value=2024, step=1)
+        claim_length = len(claim_text.split())
+        st.markdown(f"**Claim Length:** {claim_length} words")
         
         if st.button("Analyze Claim"):
             if claim_text:
                 with st.spinner("Analyzing claim..."):
                     try:
-                        results = agent.analyze_claim(claim_text)
+                        # Pass all user inputs to the agent
+                        user_features = {
+                            "esg_claim_text": claim_text,
+                            "claim_category": claim_category,
+                            "project_location": project_location,
+                            "claimed_metric_type": claimed_metric_type,
+                            "claimed_value": claimed_value,
+                            "report_year": report_year,
+                            "claim_length": claim_length
+                        }
+                        results = agent.analyze_claim(claim_text, user_features=user_features)
                         
                         # Display results
                         st.subheader("Analysis Results")
@@ -132,9 +152,7 @@ def main():
                             st.markdown(f'<p style="color:{color}; font-size: 1.2em; font-weight: bold; white-space: normal;">{fraud_alert}</p>', unsafe_allow_html=True)
 
                         with col3:
-                            model_preds = results.get("model_predictions", {})
-                            category = model_preds.get("claim_category", "N/A")
-                            st.metric("Claim Category", category)
+                            st.metric("Claim Category", claim_category)
                         
                         # Detailed breakdown
                         st.subheader("Detailed Breakdown")
@@ -143,18 +161,20 @@ def main():
                         
                         with col1:
                             st.write("**Model Predictions:**")
-                            greenwash_risk = results.get("model_predictions", {}).get("greenwashing_risk", 0.0)
-                            st.write(f"- Greenwashing Risk: {greenwash_risk:.3f}")
+                            model_preds = results.get("model_predictions", {})
                             
-                            text_analysis = results.get("text_analysis", {})
-                            text_risk = text_analysis.get("text_risk_score", 0.0)
-                            st.write(f"- Text-based Risk: {text_risk:.3f}")
+                            # Show both model scores
+                            gb_risk = model_preds.get("greenwashing_risk_gb", 0.0)
+                            lr_risk = model_preds.get("greenwashing_risk_lr", 0.0)
+                            
+                            st.write(f"- **Gradient Boosting Risk:** {gb_risk:.3f}")
+                            st.write(f"- **Logistic Regression Risk:** {lr_risk:.3f}")
                         
                         with col2:
                             st.write("**RAG Analysis:**")
                             rag_analysis = results.get("rag_analysis", {})
                             rag_risk = rag_analysis.get("rag_risk_score", 0.0)
-                            st.write(f"- RAG System Risk: {rag_risk:.3f}")
+                            st.write(f"- **RAG System Risk:** {rag_risk:.3f}")
                             
                             if google_api_key:
                                 rag_text = rag_analysis.get("analysis", "No analysis available")
@@ -193,7 +213,12 @@ def main():
                 "Our ESG initiatives have resulted in a 50% reduction in emissions while maintaining profitability.",
                 "We pledge to achieve net-zero emissions by 2050 through comprehensive sustainability measures.",
                 "Our company maintains the highest standards of corporate governance and ethical business practices."
-            ]
+            ],
+            'claim_category': ['Environmental', 'Environmental', 'Environmental', 'Environmental', 'Governance'],
+            'project_location': ['USA', 'Europe', 'Global', 'Global', 'Global'],
+            'claimed_metric_type': ['carbon_offset', 'sustainability', 'emissions_reduction', 'net_zero', 'governance'],
+            'claimed_value': [100.0, 0.0, 50.0, 0.0, 0.0],
+            'report_year': [2024, 2024, 2024, 2024, 2024]
         })
         
         csv = sample_data.to_csv(index=False)
@@ -205,7 +230,7 @@ def main():
         )
         
         st.write("**Expected CSV Format:**")
-        st.code("esg_claim_text\n'Your ESG claim here'\n'Another ESG claim here'", language="csv")
+        st.code("esg_claim_text,claim_category,project_location,claimed_metric_type,claimed_value,report_year\n'Your ESG claim here','Environmental','USA','carbon_offset',100.0,2024\n'Another ESG claim here','Social','Europe','sustainability',0.0,2024", language="csv")
         
         # File upload
         st.subheader("📤 Upload Your Batch File")
@@ -267,17 +292,29 @@ def main():
                                         status_text.text(f"Analyzing claim {idx + 1} of {total_claims}...")
                                         
                                         try:
-                                            result = agent.analyze_claim(claim_text)
+                                            # Extract user features from CSV row
+                                            user_features = {
+                                                'esg_claim_text': claim_text,
+                                                'claim_category': row.get('claim_category', 'Environmental'),
+                                                'project_location': row.get('project_location', 'Unknown'),
+                                                'claimed_metric_type': row.get('claimed_metric_type', 'Unknown'),
+                                                'claimed_value': float(row.get('claimed_value', 0.0) or 0.0),
+                                                'report_year': int(row.get('report_year', 2024) or 2024),
+                                                'claim_length': len(claim_text.split())
+                                            }
+                                            
+                                            result = agent.analyze_claim(claim_text, user_features=user_features)
+                                            model_preds = result.get('model_predictions', {})
                                             results_list.append({
                                                 'claim_id': idx + 1,
                                                 'claim_text': claim_text[:100] + "..." if len(claim_text) > 100 else claim_text,
                                                 'risk_level': result.get('overall_assessment', {}).get('risk_level', 'N/A'),
                                                 'risk_score': result.get('overall_assessment', {}).get('overall_risk_score', 0.0),
                                                 'fraud_alert': result.get('overall_assessment', {}).get('fraud_alert', 'N/A'),
-                                                'category': result.get('model_predictions', {}).get('claim_category', 'N/A'),
-                                                'greenwashing_risk': result.get('model_predictions', {}).get('greenwashing_risk', 0.0),
+                                                'category': user_features['claim_category'],
+                                                'gb_risk': model_preds.get('greenwashing_risk_gb', 0.0),
+                                                'lr_risk': model_preds.get('greenwashing_risk_lr', 0.0),
                                                 'rag_risk': result.get('rag_analysis', {}).get('rag_risk_score', 0.0),
-                                                'text_risk': result.get('text_analysis', {}).get('text_risk_score', 0.0),
                                                 'analysis_status': 'Success'
                                             })
                                         except Exception as e:
@@ -288,9 +325,9 @@ def main():
                                                 'risk_score': 0.0,
                                                 'fraud_alert': 'Analysis Failed',
                                                 'category': 'N/A',
-                                                'greenwashing_risk': 0.0,
+                                                'gb_risk': 0.0,
+                                                'lr_risk': 0.0,
                                                 'rag_risk': 0.0,
-                                                'text_risk': 0.0,
                                                 'analysis_status': f'Error: {str(e)[:50]}'
                                             })
                                     

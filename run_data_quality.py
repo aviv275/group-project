@@ -36,7 +36,7 @@ def main():
     
     # 1. Load Data
     print("1. Loading Data...")
-    df = pd.read_csv('Synthetic_ESG_Greenwashing_Dataset_200_v2.csv')
+    df = pd.read_csv('data/Synthetic_ESG_Greenwashing_Dataset_500_flag80_v3.csv')
     print(f"   Dataset shape: {df.shape}")
     print(f"   Columns: {list(df.columns)}")
     

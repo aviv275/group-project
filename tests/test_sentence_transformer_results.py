@@ -3,12 +3,15 @@
 Minimal test script for validating the tuned sentence transformer model.
 """
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, classification_report
 from src.data_prep import engineer_features_sentence_transformer
 import pickle
-import os
 
 MODEL_PATH = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
 DATA_PATH = "data/clean_claims.parquet"

@@ -29,7 +29,7 @@ np.random.seed(RANDOM_SEED)
 # At the top of src/data_prep.py, after the imports
 EXPECTED_NUMERIC_FEATURES = [
     'report_year', 'claimed_value', 'actual_measured_value', 'value_deviation',
-    'external_validation_score', 'controversy_flag', 'report_sentiment_score',
+    'external_validation_score', 'controversy_flag',
     'llm_claim_consistency_score', 'text_length', 'word_count',
     'deviation_abs', 'deviation_pct', 'avg_score', 'year', 'month',
     'claim_category_encoded', 'claimed_metric_type_encoded', 'project_location_encoded'
@@ -81,7 +81,7 @@ def validate_schema(df: pd.DataFrame) -> Dict[str, Any]:
         'claim_category', 'claimed_metric_type', 'claimed_value', 'measurement_unit',
         'project_location', 'actual_measured_value', 'value_deviation',
         'external_validation_score', 'greenwashing_flag', 'controversy_flag',
-        'source_doc_link', 'report_sentiment_score', 'llm_claim_consistency_score',
+        'source_doc_link', 'llm_claim_consistency_score',
         'timestamp'
     ]
     
@@ -105,7 +105,6 @@ def validate_schema(df: pd.DataFrame) -> Dict[str, Any]:
         'greenwashing_flag': 'int64',
         'controversy_flag': 'int64',
         'source_doc_link': 'object',
-        'report_sentiment_score': 'float64',
         'llm_claim_consistency_score': 'float64',
         'timestamp': 'object'
     }
@@ -141,7 +140,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # Ensure numeric columns are properly typed
     numeric_columns = [
         'claimed_value', 'actual_measured_value', 'value_deviation',
-        'external_validation_score', 'report_sentiment_score', 
+        'external_validation_score', 
         'llm_claim_consistency_score'
     ]
     
@@ -369,7 +368,7 @@ def save_clean_data(df: pd.DataFrame, filepath: str) -> None:
 def main():
     """Main function for data preparation pipeline."""
     # Load data
-    df = load_data('data/Synthetic_ESG_Greenwashing_Dataset_200_v2.csv')
+    df = load_data('data/Synthetic_ESG_Greenwashing_Dataset_500_flag80_v3.csv')
     
     # Validate schema
     validation_results = validate_schema(df)

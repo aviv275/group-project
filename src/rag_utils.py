@@ -26,6 +26,7 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import FAISS, Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain.chains import RetrievalQA
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -408,7 +409,7 @@ class ESG_RAG_System:
             return self._fallback_keyword_analysis(claim_text)
         
         try:
-            result = self.rag_chain({"query": claim_text})
+            result = self.rag_chain.invoke({"query": claim_text})
             
             # Improved risk scoring logic
             source_docs = result.get("source_documents", [])
@@ -423,7 +424,8 @@ class ESG_RAG_System:
                 "sources": [doc.metadata.get('source', 'Unknown') for doc in source_docs]
             }
         except Exception as e:
-            logger.error(f"RAG analysis failed: {e}")
+            import traceback
+            logger.error(f"RAG analysis failed: {type(e).__name__}: {repr(e)}\n{traceback.format_exc()}\nRAG chain: {repr(self.rag_chain)}\nVector store: {repr(self.vector_store)}")
             return self._fallback_keyword_analysis(claim_text)
     
     def _fallback_keyword_analysis(self, claim_text: str) -> Dict[str, Any]:
@@ -609,8 +611,7 @@ def create_rag_system(
         logger.warning("GOOGLE_API_KEY not found. RAG will not use an LLM.")
         llm = None
         # Use local sentence transformer for embeddings when no API key
-        from sentence_transformers import SentenceTransformer
-        embeddings = SentenceTransformer('all-MiniLM-L6-v2')
+        embeddings = HuggingFaceEmbeddings(model_name='all-MiniLM-L6-v2')
     else:
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0.3, convert_system_message_to_human=True)
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")

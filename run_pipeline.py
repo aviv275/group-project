@@ -46,7 +46,7 @@ def main():
     print("=" * 60)
     
     # Check if we're in the right directory
-    if not os.path.exists('Synthetic_ESG_Greenwashing_Dataset_200_v2.csv'):
+    if not os.path.exists('data/Synthetic_ESG_Greenwashing_Dataset_500_flag80_v3.csv'):
         print("❌ Error: ESG dataset not found. Please run this script from the project root directory.")
         return False
     
@@ -59,7 +59,13 @@ def main():
     
     parser = argparse.ArgumentParser(description="ESG Fraud Detection Full Pipeline")
     parser.add_argument("--google_key", help="Google API Key for Gemini models.")
+    parser.add_argument("--fast", action="store_true", help="Fast mode - skip hyperparameter tuning")
     args = parser.parse_args()
+    
+    # Add fast mode flag to training command if requested
+    training_command = 'python3 src/run_sentence_transformer_model.py'
+    if args.fast:
+        training_command += ' --fast'
     
     pipeline_steps = [
         {
@@ -67,11 +73,11 @@ def main():
             'description': 'Data Quality Analysis and Cleaning'
         },
         {
-            'command': 'python3 run_sentence_transformer_model.py',
+            'command': training_command,
             'description': 'Model Training (Sentence Transformers + SMOTE)'
         },
         {
-            'command': 'python3 test_sentence_transformer_results.py',
+            'command': 'python3 tests/test_sentence_transformer_results.py',
             'description': 'Model Validation and Testing'
         }
     ]

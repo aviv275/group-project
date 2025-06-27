@@ -172,7 +172,8 @@ class ESGAgent:
     
     def __init__(self, 
                  category_model_path: str,
-                 greenwash_model_path: str,
+                 greenwash_gb_model_path: str,
+                 greenwash_lr_model_path: str,
                  google_api_key: Optional[str] = None,
                  use_chroma: bool = False):
         """
@@ -180,13 +181,15 @@ class ESGAgent:
         
         Args:
             category_model_path: Path to category classification model
-            greenwash_model_path: Path to greenwashing detection model
+            greenwash_gb_model_path: Path to Gradient Boosting greenwashing detection model
+            greenwash_lr_model_path: Path to Logistic Regression greenwashing detection model
             google_api_key: Google API key for Gemini
             use_chroma: Whether to use ChromaDB for vector store
         """
         self.analyzer = ESGClaimAnalyzer(
             category_model_path=category_model_path,
-            greenwash_model_path=greenwash_model_path
+            greenwash_gb_model_path=greenwash_gb_model_path,
+            greenwash_lr_model_path=greenwash_lr_model_path
         )
         self.rag_analyzer = create_rag_system(use_chroma=use_chroma, google_api_key=google_api_key)
         
@@ -197,24 +200,28 @@ class ESGAgent:
         else:
             self.llm = None
     
-    def analyze_claim(self, claim_text: str) -> Dict[str, Any]:
+    def analyze_claim(self, claim_text: str, user_features: dict = None, use_rag: bool = True) -> Dict[str, Any]:
         """
         Orchestrates the analysis of an ESG claim.
-        
-        This method combines text analysis, model predictions, and RAG analysis
-        to create a comprehensive assessment of the claim.
+        Optionally accepts user_features for LR model.
+        If use_rag is False, RAG risk is set to 0.0 and not included in the risk calculation.
         """
         # --- 1. Text-based Analysis ---
         text_analysis_results = self._analyze_text_features(claim_text)
         
         # --- 2. Model-based Analysis ---
-        model_results = self.analyzer.analyze(claim_text)
+        model_results = self.analyzer.analyze(claim_text, user_features=user_features)
 
         # --- 3. RAG Analysis ---
-        rag_results = self.rag_analyzer.analyze_claim(claim_text)
+        if use_rag:
+            rag_results = self.rag_analyzer.analyze_claim(claim_text)
+            rag_risk = rag_results.get("rag_risk_score", 0.0)
+        else:
+            rag_results = {}
+            rag_risk = 0.0
         
         # --- 4. Combine and Assess ---
-        assessment = self._combine_results(text_analysis_results, model_results, rag_results)
+        assessment = self._combine_results(text_analysis_results, model_results, rag_results, rag_risk, use_rag)
         assessment_with_alert = self._determine_fraud_alert(assessment)
         
         # --- 5. Generate Recommendations ---
@@ -252,21 +259,22 @@ class ESGAgent:
             "text_risk_score": min(score, 1.0)
         }
 
-    def _combine_results(self, text: Dict, model: Dict, rag: Dict) -> Dict[str, Any]:
+    def _combine_results(self, text: Dict, model: Dict, rag: Dict, rag_risk: float, use_rag: bool) -> Dict[str, Any]:
         """Combine analysis results into a final assessment."""
-        
-        # Risk score calculation
-        greenwashing_risk = model.get("greenwashing_risk", 0.0)
+        gb_risk = model.get("greenwashing_risk_gb", 0.0)
+        lr_risk = model.get("greenwashing_risk_lr", 0.0)
         text_risk = text.get("text_risk_score", 0.0)
-        rag_risk = rag.get("rag_risk_score", 0.0)
-        
-        # Combine risks - weighted average
-        # Assign weights to each component
-        weights = {"greenwashing": 0.5, "text": 0.25, "rag": 0.25}
-        overall_risk_score = (greenwashing_risk * weights["greenwashing"]) + \
-                             (text_risk * weights["text"]) + \
-                             (rag_risk * weights["rag"])
-                             
+        # If not using RAG, set rag_risk to 0.0 and adjust weights
+        if use_rag:
+            weights = {"greenwashing": 0.5, "text": 0.25, "rag": 0.25}
+        else:
+            weights = {"greenwashing": 0.67, "text": 0.33, "rag": 0.0}
+        greenwashing_risk = max(gb_risk, lr_risk)
+        overall_risk_score = (
+            greenwashing_risk * weights["greenwashing"] +
+            text_risk * weights["text"] +
+            rag_risk * weights["rag"]
+        )
         return {
             "overall_risk_score": min(overall_risk_score, 1.0),
         }
@@ -307,44 +315,49 @@ class ESGAgent:
 class ESGClaimAnalyzer:
     """Tool for analyzing a single ESG claim using models."""
 
-    def __init__(self, category_model_path: str, greenwash_model_path: str):
-        self.category_model = load_model(category_model_path)
-        self.greenwash_model = load_model(greenwash_model_path)
+    def __init__(self, category_model_path: str, greenwash_gb_model_path: str, greenwash_lr_model_path: str):
+        self.category_model = load_model(category_model_path) if os.path.exists(category_model_path) else None
+        self.greenwash_gb_model = load_model(greenwash_gb_model_path) if os.path.exists(greenwash_gb_model_path) else None
+        self.greenwash_lr_model = load_model(greenwash_lr_model_path) if os.path.exists(greenwash_lr_model_path) else None
 
-    def analyze(self, claim_text: str) -> Dict[str, Any]:
-        """Analyzes a single ESG claim."""
+    def analyze(self, claim_text: str, user_features: dict = None) -> Dict[str, Any]:
+        """Analyzes a single ESG claim. Optionally uses user_features for LR model."""
+        if not self.greenwash_gb_model and not self.greenwash_lr_model:
+            return {"error": "No greenwashing models are loaded."}
         
-        if not self.category_model or not self.greenwash_model:
-            return {"error": "One or more models are not loaded."}
-            
-        # Create a single-column DataFrame for feature engineering
         df = pd.DataFrame([{'esg_claim_text': claim_text}])
-        
-        # Engineer features using sentence transformer approach
-        try:
-            features = engineer_features_sentence_transformer(df)
-        except Exception as e:
-            logger.error(f"Feature engineering failed: {e}")
-            return {"error": f"Feature engineering failed: {e}"}
-
-        # Get predictions
-        try:
-            # For now, use the same model for both category and greenwashing
-            # since we don't have separate models
-            greenwash_prob = self.greenwash_model.predict_proba(features)[0][1]
-            
-            # For category, we'll use a simple rule-based approach since we don't have a category model
-            # This is a temporary solution
-            category_label = "Environmental"  # Default category
-            
-        except Exception as e:
-            logger.error(f"Model prediction failed: {e}")
-            return {"error": f"Model prediction failed: {e}"}
-            
-        return {
-            "claim_category": category_label,
-            "greenwashing_risk": greenwash_prob
-        }
+        results = {}
+        # Get Gradient Boosting predictions
+        if self.greenwash_gb_model:
+            try:
+                features = engineer_features_sentence_transformer(df)
+                gb_prob = self.greenwash_gb_model.predict_proba(features)[0][1]
+                results["greenwashing_risk_gb"] = float(gb_prob)
+            except Exception as e:
+                logger.error(f"Gradient Boosting prediction failed: {e}")
+                results["greenwashing_risk_gb"] = 0.0
+                results["gb_error"] = str(e)
+        else:
+            results["greenwashing_risk_gb"] = 0.0
+            results["gb_error"] = "Model not loaded"
+        # Get Logistic Regression predictions
+        if self.greenwash_lr_model:
+            try:
+                # Use the same sentence transformer features as GB model
+                features = engineer_features_sentence_transformer(df)
+                lr_prob = self.greenwash_lr_model.predict_proba(features)[0][1]
+                results["greenwashing_risk_lr"] = float(lr_prob)
+            except Exception as e:
+                logger.error(f"Logistic Regression prediction failed: {e}")
+                results["greenwashing_risk_lr"] = 0.0
+                results["lr_error"] = str(e)
+        else:
+            results["greenwashing_risk_lr"] = 0.0
+            results["lr_error"] = "Model not loaded"
+        gb_risk = results.get("greenwashing_risk_gb", 0.0)
+        lr_risk = results.get("greenwashing_risk_lr", 0.0)
+        results["greenwashing_risk"] = (gb_risk + lr_risk) / 2.0
+        return results
 
 
 def main():
@@ -352,13 +365,15 @@ def main():
     parser = argparse.ArgumentParser(description="ESG Claim Analysis Agent")
     parser.add_argument("claim_text", type=str, help="The ESG claim text to analyze.")
     parser.add_argument("--cat_model", type=str, default="models/category_classifier.pkl", help="Path to category classifier model.")
-    parser.add_argument("--gw_model", type=str, default="models/greenwashing_classifier.pkl", help="Path to greenwashing classifier model.")
+    parser.add_argument("--gb_model", type=str, default="models/tuned_gradient_boosting_sentence_embeddings.pkl", help="Path to Gradient Boosting greenwashing model.")
+    parser.add_argument("--lr_model", type=str, default="models/logistic_regression_sentence_embeddings.pkl", help="Path to Logistic Regression greenwashing model.")
     parser.add_argument("--google_key", type=str, default=None, help="Google API key for Gemini.")
     args = parser.parse_args()
 
     agent = ESGAgent(
         category_model_path=args.cat_model,
-        greenwash_model_path=args.gw_model,
+        greenwash_gb_model_path=args.gb_model,
+        greenwash_lr_model_path=args.lr_model,
         google_api_key=args.google_key
     )
     

@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
+import argparse
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.svm import SVC
@@ -37,7 +38,7 @@ def add_text_features(texts):
     sentiments = np.array([TextBlob(t).sentiment.polarity for t in texts]).reshape(-1, 1)
     return np.hstack([lengths, word_counts, sentiments])
 
-def main():
+def main(fast_mode=False):
     print("=== ESG GREENWASHING DETECTION WITH SENTENCE TRANSFORMERS + SMOTE ===\n")
     
     # Load and prepare data
@@ -212,25 +213,24 @@ def main():
     plt.close()
     print(f"Saved: {filename}")
     
-    # Perform hyperparameter tuning
+    # Hyperparameter tuning for the best model
     print("\n=== HYPERPARAMETER TUNING ===\n")
     
     # Find the best model based on ROC-AUC
-    best_model_name = max(results.items(), key=lambda x: x[1]['roc_auc'])[0]
+    best_model_name = max(results.keys(), key=lambda x: results[x]['roc_auc'])
     print(f"Best model for tuning: {best_model_name}")
     
-    # Define parameter grids for different models
+    # Define parameter grids for each model
     param_grids = {
         'Logistic Regression': {
-            'C': [0.1, 1, 10, 100],
+            'C': [0.1, 1, 10],
             'penalty': ['l1', 'l2'],
-            'solver': ['liblinear', 'saga']
+            'solver': ['liblinear']
         },
         'Random Forest': {
             'n_estimators': [50, 100, 200],
-            'max_depth': [10, 20, None],
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4]
+            'max_depth': [3, 5, 7, None],
+            'min_samples_split': [2, 5, 10]
         },
         'Gradient Boosting': {
             'n_estimators': [50, 100, 200],
@@ -239,66 +239,78 @@ def main():
             'subsample': [0.8, 0.9, 1.0]
         },
         'SVM': {
-            'C': [0.1, 1, 10, 100],
-            'gamma': ['scale', 'auto', 0.001, 0.01],
-            'kernel': ['rbf', 'linear']
+            'C': [0.1, 1, 10],
+            'kernel': ['rbf', 'linear'],
+            'gamma': ['scale', 'auto']
         }
     }
     
-    # Get the base model and parameter grid
-    base_model = models[best_model_name]
-    param_grid = param_grids[best_model_name]
-    
-    print(f"Parameter grid for {best_model_name}:")
-    for param, values in param_grid.items():
-        print(f"  {param}: {values}")
-    
-    # Perform grid search with cross-validation
-    print(f"\nPerforming grid search for {best_model_name}...")
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    
-    grid_search = GridSearchCV(
-        base_model, 
-        param_grid, 
-        cv=cv, 
-        scoring='roc_auc', 
-        n_jobs=-1, 
-        verbose=1
-    )
-    
-    grid_search.fit(X_train_bal, y_train_bal)
-    
-    print(f"\nBest parameters: {grid_search.best_params_}")
-    print(f"Best cross-validation score: {grid_search.best_score_:.3f}")
+    if fast_mode:
+        print("Fast mode: Skipping hyperparameter tuning")
+        # Use the best untuned model as the tuned model
+        tuned_model = models[best_model_name]
+        tuned_results = results[best_model_name].copy()
+        grid_search = None
+    else:
+        # Get the base model and parameter grid
+        base_model = models[best_model_name]
+        param_grid = param_grids[best_model_name]
+        
+        print(f"Parameter grid for {best_model_name}:")
+        for param, values in param_grid.items():
+            print(f"  {param}: {values}")
+        
+        # Perform grid search with cross-validation
+        print(f"\nPerforming grid search for {best_model_name}...")
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        
+        grid_search = GridSearchCV(
+            base_model, 
+            param_grid, 
+            cv=cv, 
+            scoring='roc_auc', 
+            n_jobs=-1, 
+            verbose=1
+        )
+        
+        grid_search.fit(X_train_bal, y_train_bal)
+        
+        print(f"\nBest parameters: {grid_search.best_params_}")
+        print(f"Best cross-validation score: {grid_search.best_score_:.3f}")
+        
+        # Get tuned model
+        tuned_model = grid_search.best_estimator_
+        
+        # Make predictions
+        y_pred_tuned = tuned_model.predict(X_test_full)
+        y_pred_proba_tuned = tuned_model.predict_proba(X_test_full)[:, 1]
+        
+        # Calculate metrics
+        tuned_results = {
+            'accuracy': accuracy_score(y_test, y_pred_tuned),
+            'precision': precision_score(y_test, y_pred_tuned),
+            'recall': recall_score(y_test, y_pred_tuned),
+            'f1': f1_score(y_test, y_pred_tuned),
+            'roc_auc': roc_auc_score(y_test, y_pred_proba_tuned)
+        }
     
     # Evaluate tuned model
     print("\n=== TUNED MODEL EVALUATION ===\n")
     
-    # Get tuned model
-    tuned_model = grid_search.best_estimator_
-    
-    # Make predictions
-    y_pred_tuned = tuned_model.predict(X_test_full)
-    y_pred_proba_tuned = tuned_model.predict_proba(X_test_full)[:, 1]
-    
-    # Calculate metrics
-    tuned_results = {
-        'accuracy': accuracy_score(y_test, y_pred_tuned),
-        'precision': precision_score(y_test, y_pred_tuned),
-        'recall': recall_score(y_test, y_pred_tuned),
-        'f1': f1_score(y_test, y_pred_tuned),
-        'roc_auc': roc_auc_score(y_test, y_pred_proba_tuned)
-    }
-    
-    print(f"Tuned {best_model_name} Results:")
-    for metric, value in tuned_results.items():
-        print(f"  {metric.capitalize()}: {value:.3f}")
-    
-    # Compare with untuned model
-    print(f"\nImprovement over untuned model:")
-    for metric in ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']:
-        improvement = tuned_results[metric] - results[best_model_name][metric]
-        print(f"  {metric.capitalize()}: {improvement:+.3f}")
+    if not fast_mode:
+        print(f"Tuned {best_model_name} Results:")
+        for metric, value in tuned_results.items():
+            print(f"  {metric.capitalize()}: {value:.3f}")
+        
+        # Compare with untuned model
+        print(f"\nImprovement over untuned model:")
+        for metric in ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']:
+            improvement = tuned_results[metric] - results[best_model_name][metric]
+            print(f"  {metric.capitalize()}: {improvement:+.3f}")
+    else:
+        print(f"Using best untuned model ({best_model_name}) Results:")
+        for metric, value in tuned_results.items():
+            print(f"  {metric.capitalize()}: {value:.3f}")
     
     # Perform cross-validation for all models
     print("\n=== CROSS-VALIDATION ANALYSIS ===\n")
@@ -321,9 +333,14 @@ def main():
         print(f"  CV ROC-AUC: {scores.mean():.3f} (+/- {scores.std() * 2:.3f})")
     
     # Cross-validation for tuned model
-    print(f"\nPerforming cross-validation for Tuned {best_model_name}...")
+    if fast_mode:
+        model_display_name = best_model_name
+    else:
+        model_display_name = f'Tuned {best_model_name}'
+    
+    print(f"\nPerforming cross-validation for {model_display_name}...")
     tuned_scores = cross_val_score(tuned_model, X_train_bal, y_train_bal, cv=cv, scoring='roc_auc')
-    cv_scores[f'Tuned {best_model_name}'] = {
+    cv_scores[model_display_name] = {
         'mean': tuned_scores.mean(),
         'std': tuned_scores.std(),
         'scores': tuned_scores.tolist()
@@ -362,7 +379,7 @@ def main():
     
     # Get the best model (tuned version)
     best_model = tuned_model
-    best_model_name_display = f'Tuned {best_model_name}'
+    best_model_name_display = model_display_name
     
     # Detailed evaluation
     print(f"Detailed evaluation of {best_model_name_display}:")
@@ -451,11 +468,12 @@ def main():
         pickle.dump(tuned_model, f)
     print(f"Saved: {tuned_filename}")
     
-    # Save grid search results
-    grid_filename = f'models/grid_search_results_{feature_suffix}.pkl'
-    with open(grid_filename, 'wb') as f:
-        pickle.dump(grid_search, f)
-    print(f"Saved: {grid_filename}")
+    # Save grid search results (only if not in fast mode)
+    if grid_search is not None:
+        grid_filename = f'models/grid_search_results_{feature_suffix}.pkl'
+        with open(grid_filename, 'wb') as f:
+            pickle.dump(grid_search, f)
+        print(f"Saved: {grid_filename}")
     
     # Save advanced metrics
     print("\n=== SAVING METRICS ===\n")
@@ -467,9 +485,9 @@ def main():
         'model_comparison': results,
         'cross_validation_scores': cv_scores,
         'best_model': {
-            'name': f'Tuned {best_model_name}',
-            'parameters': grid_search.best_params_,
-            'cv_score': grid_search.best_score_,
+            'name': best_model_name_display,
+            'parameters': grid_search.best_params_ if grid_search is not None else 'default',
+            'cv_score': grid_search.best_score_ if grid_search is not None else cv_scores[model_display_name]['mean'],
             'test_performance': tuned_results
         },
         'dataset_info': {
@@ -507,9 +525,10 @@ def main():
         print(f"   {name}:")
         print(f"     ROC-AUC: {result['roc_auc']:.3f}")
         print(f"     F1-Score: {result['f1']:.3f}")
-        print(f"     CV ROC-AUC: {cv_scores[name]['mean']:.3f} (+/- {cv_scores[name]['std']*2:.3f})")
+        if name in cv_scores:
+            print(f"     CV ROC-AUC: {cv_scores[name]['mean']:.3f} (+/- {cv_scores[name]['std']*2:.3f})")
     
-    print(f"\n3. BEST MODEL: Tuned {best_model_name}")
+    print(f"\n3. BEST MODEL: {best_model_name_display}")
     print(f"   - Best parameters: {advanced_metrics['best_model']['parameters']}")
     print(f"   - CV ROC-AUC: {advanced_metrics['best_model']['cv_score']:.3f}")
     print(f"   - Test ROC-AUC: {advanced_metrics['best_model']['test_performance']['roc_auc']:.3f}")
@@ -536,4 +555,7 @@ def main():
     print(f"\n✅ Model tuning with {feature_type.lower()} and SMOTE completed successfully at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Run model tuning with Sentence Transformers and SMOTE")
+    parser.add_argument("--fast", action="store_true", help="Skip hyperparameter tuning")
+    args = parser.parse_args()
+    main(args.fast) 
