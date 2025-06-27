@@ -101,16 +101,19 @@ tmp/
 .env.local
 .env.production
 
-# Model files (if too large)
-# Uncomment if models are too large for GitHub
-# models/*.pkl
-# models/*.joblib
-# models/rag_system/
+# Data files
+data/*.parquet
+data/*.csv
+data/clean_claims*.parquet
 
-# Data files (if too large)
-# Uncomment if data files are too large for GitHub
-# data/*.csv
-# data/*.parquet
+# Model files (large binary files)
+models/*.pkl
+models/rag_system/vector_store.index/
+
+# Generated figures and reports
+reports/figures/*.png
+reports/figures/*.jpg
+reports/figures/*.jpeg
 
 # API keys and secrets
 *.key
