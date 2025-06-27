@@ -118,4 +118,7 @@ reports/figures/*.jpeg
 # API keys and secrets
 *.key
 secrets.json
-config.json 
+config.json
+
+# Streamlit
+.streamlit/ 
