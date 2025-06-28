@@ -22,21 +22,41 @@ logger = logging.getLogger(__name__)
 from src.agent_runner import ESGAgent
 from src.data_prep import engineer_features
 
+# Global variable to track model type
+MODEL_TYPE = "advanced"
+
 @st.cache_resource
-def load_esg_agent(google_api_key=None):
-    """Load the ESG agent with optional API key."""
+def load_esg_agent(google_api_key=None, model_type="advanced"):
+    """Load the ESG agent with optional API key and model type."""
+    global MODEL_TYPE
+    MODEL_TYPE = model_type
+    
     try:
-        # Use both Gradient Boosting and Logistic Regression models
-        gb_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
-        lr_model_path = "models/logistic_regression_sentence_embeddings.pkl"
-        category_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"  # Use GB for category too
-        
-        agent = ESGAgent(
-            category_model_path=category_model_path,
-            greenwash_gb_model_path=gb_model_path,
-            greenwash_lr_model_path=lr_model_path,
-            google_api_key=google_api_key
-        )
+        if model_type == "advanced":
+            # For advanced model, we'll use a wrapper approach
+            # Use the existing agent structure but with advanced model path
+            advanced_model_path = "models/greenwashing_lr_advanced.pkl"
+            category_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
+            
+            # Create a wrapper that uses the advanced model
+            agent = ESGAgent(
+                category_model_path=category_model_path,
+                greenwash_gb_model_path=advanced_model_path,  # Use advanced model as GB
+                greenwash_lr_model_path=advanced_model_path,  # Use advanced model as LR
+                google_api_key=google_api_key
+            )
+        else:
+            # Use both Gradient Boosting and Logistic Regression models (legacy)
+            gb_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
+            lr_model_path = "models/logistic_regression_sentence_embeddings.pkl"
+            category_model_path = "models/tuned_gradient_boosting_sentence_embeddings.pkl"
+            
+            agent = ESGAgent(
+                category_model_path=category_model_path,
+                greenwash_gb_model_path=gb_model_path,
+                greenwash_lr_model_path=lr_model_path,
+                google_api_key=google_api_key
+            )
         return agent
     except Exception as e:
         st.error(f"Failed to load ESG Agent: {e}")
@@ -60,6 +80,21 @@ def main():
     # --- Sidebar for Configuration ---
     st.sidebar.header("Configuration")
     
+    # Model Selection
+    model_type = st.sidebar.selectbox(
+        "Model Type",
+        ["Advanced Logistic Regression (Recommended)", "Legacy Models (GB + LR)"],
+        help="Advanced model includes probability calibration and threshold optimization"
+    )
+    
+    # Convert selection to internal format
+    if "Advanced" in model_type:
+        model_type_internal = "advanced"
+        st.sidebar.success("✅ Using Advanced Model: Calibrated probabilities, optimized threshold")
+    else:
+        model_type_internal = "legacy"
+        st.sidebar.info("ℹ️ Using Legacy Models: Gradient Boosting + Logistic Regression")
+    
     # API Key Configuration
     api_key_option = st.sidebar.selectbox(
         "API Key Configuration",
@@ -78,7 +113,7 @@ def main():
             google_api_key = None
     
     # Load ESG Agent
-    agent = load_esg_agent(google_api_key)
+    agent = load_esg_agent(google_api_key, model_type_internal)
     if agent is None:
         st.error("Failed to initialize ESG Agent. Please check your configuration.")
         return
@@ -93,7 +128,12 @@ def main():
     if analysis_mode == "Single Claim Analysis":
         st.header("Single Claim Analysis")
         
-        # Show API status
+        # Show model and API status
+        if model_type_internal == "advanced":
+            st.success("🚀 Advanced Model Active: Probability calibration, threshold optimization, enhanced features")
+        else:
+            st.info("📊 Legacy Models Active: Gradient Boosting + Logistic Regression")
+            
         if google_api_key:
             st.success("✅ Full Analysis Mode: Using Google Gemini for detailed analysis")
         else:
@@ -109,6 +149,7 @@ def main():
         project_location = st.text_input("Project Location", value="USA")
         claimed_metric_type = st.text_input("Claimed Metric Type", value="carbon_offset")
         claimed_value = st.number_input("Claimed Value", value=0.0)
+        actual_measured_value = st.number_input("Actual Measured Value", value=0.0, help="Required for advanced model features")
         report_year = st.number_input("Report Year", value=2024, step=1)
         claim_length = len(claim_text.split())
         st.markdown(f"**Claim Length:** {claim_length} words")
@@ -117,17 +158,75 @@ def main():
             if claim_text:
                 with st.spinner("Analyzing claim..."):
                     try:
-                        # Pass all user inputs to the agent
-                        user_features = {
-                            "esg_claim_text": claim_text,
-                            "claim_category": claim_category,
-                            "project_location": project_location,
-                            "claimed_metric_type": claimed_metric_type,
-                            "claimed_value": claimed_value,
-                            "report_year": report_year,
-                            "claim_length": claim_length
-                        }
-                        results = agent.analyze_claim(claim_text, user_features=user_features)
+                        # For advanced model, call it directly
+                        if model_type_internal == "advanced":
+                            # Import the advanced model
+                            from src.model_utils import AdvancedLogisticRegression
+                            import pickle
+                            from src.rag_utils import create_rag_system
+                            
+                            # Load the advanced model
+                            with open("models/greenwashing_lr_advanced.pkl", "rb") as f:
+                                advanced_model = pickle.load(f)
+                            
+                            # Initialize RAG system once
+                            rag_system = create_rag_system(google_api_key=google_api_key)
+                            
+                            # Create DataFrame with the expected features
+                            df_input = pd.DataFrame([{
+                                "esg_claim_text": claim_text,
+                                "claim_category": claim_category,
+                                "project_location": project_location,
+                                "claimed_metric_type": claimed_metric_type,
+                                "claimed_value": claimed_value,
+                                "actual_measured_value": actual_measured_value,
+                                "report_year": report_year
+                            }])
+                            
+                            # Add the engineered features that the advanced model expects
+                            df_input["abs_value_deviation"] = abs(claimed_value - actual_measured_value)
+                            df_input["rel_value_deviation"] = df_input["abs_value_deviation"] / (abs(claimed_value) + 1e-6)
+                            
+                            # Get prediction
+                            risk_score = advanced_model.predict_proba(df_input)[0, 1]
+                            threshold = advanced_model.get_threshold()
+                            
+                            # --- RAG/LLM Analysis ---
+                            rag_results = rag_system.analyze_claim(claim_text)
+                            
+                            # Create results structure
+                            results = {
+                                "model_predictions": {
+                                    "greenwashing_risk_gb": risk_score,
+                                    "greenwashing_risk_lr": risk_score,
+                                    "greenwashing_risk": risk_score
+                                },
+                                "overall_assessment": {
+                                    "risk_level": "HIGH" if risk_score >= threshold else "LOW",
+                                    "overall_risk_score": risk_score,
+                                    "fraud_alert": "HIGH" if risk_score >= threshold else "CLEAR"
+                                },
+                                "rag_analysis": rag_results,
+                                "recommendations": [
+                                    "Review claim accuracy and supporting evidence.",
+                                    "Consider independent verification of metrics."
+                                ] if risk_score >= threshold else [
+                                    "Claim appears to be well-structured and transparent."
+                                ]
+                            }
+                        else:
+                            # Use the agent for legacy models
+                            user_features = {
+                                "esg_claim_text": claim_text,
+                                "claim_category": claim_category,
+                                "project_location": project_location,
+                                "claimed_metric_type": claimed_metric_type,
+                                "claimed_value": claimed_value,
+                                "actual_measured_value": actual_measured_value,
+                                "report_year": report_year,
+                                "claim_length": claim_length
+                            }
+                            results = agent.analyze_claim(claim_text, user_features=user_features)
                         
                         # Display results
                         st.subheader("Analysis Results")
@@ -162,13 +261,27 @@ def main():
                         with col1:
                             st.write("**Model Predictions:**")
                             model_preds = results.get("model_predictions", {})
-                            
-                            # Show both model scores
-                            gb_risk = model_preds.get("greenwashing_risk_gb", 0.0)
-                            lr_risk = model_preds.get("greenwashing_risk_lr", 0.0)
-                            
-                            st.write(f"- **Gradient Boosting Risk:** {gb_risk:.3f}")
-                            st.write(f"- **Logistic Regression Risk:** {lr_risk:.3f}")
+                            if model_type_internal == "advanced":
+                                advanced_risk = model_preds.get("greenwashing_risk_gb", 0.0)
+                                threshold = results.get("overall_assessment", {}).get("threshold", 0.263)  # fallback to 0.263
+                                if "threshold" not in results.get("overall_assessment", {}):
+                                    # Try to get from model if not present
+                                    try:
+                                        from src.model_utils import AdvancedLogisticRegression
+                                        import pickle
+                                        with open("models/greenwashing_lr_advanced.pkl", "rb") as f:
+                                            advanced_model = pickle.load(f)
+                                        threshold = advanced_model.get_threshold()
+                                    except Exception:
+                                        threshold = 0.263
+                                st.write(f"- **Advanced Model Risk:** {advanced_risk:.3f}")
+                                st.write(f"- **Optimal Threshold:** {threshold:.3f}")
+                                st.write(f"- **Prediction:** {'GREEN-WASH' if advanced_risk >= threshold else 'Clean'}")
+                            else:
+                                gb_risk = model_preds.get("greenwashing_risk_gb", 0.0)
+                                lr_risk = model_preds.get("greenwashing_risk_lr", 0.0)
+                                st.write(f"- **Gradient Boosting Risk:** {gb_risk:.3f}")
+                                st.write(f"- **Logistic Regression Risk:** {lr_risk:.3f}")
                         
                         with col2:
                             st.write("**RAG Analysis:**")
@@ -183,6 +296,23 @@ def main():
                             else:
                                 st.info("RAG analysis disabled (no API key). Enable by providing a Google API key.")
                         
+                        # Enhanced features (for advanced model)
+                        if model_type_internal == "advanced":
+                            st.subheader("Advanced Model Features")
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                abs_deviation = abs(claimed_value - actual_measured_value)
+                                rel_deviation = abs_deviation / (abs(claimed_value) + 1e-6)
+                                st.metric("Absolute Value Deviation", f"{abs_deviation:.2f}")
+                                st.metric("Relative Value Deviation", f"{rel_deviation:.3f}")
+                            
+                            with col2:
+                                st.write("**Feature Importance:**")
+                                st.write("• Enhanced discrepancy detection")
+                                st.write("• Calibrated probability scores")
+                                st.write("• Optimized decision threshold")
+                        
                         # Recommendations
                         st.subheader("Recommendations")
                         recommendations = results.get("recommendations", ["No recommendations available"])
@@ -195,7 +325,12 @@ def main():
     elif analysis_mode == "Batch File Analysis":
         st.header("Batch File Analysis")
         
-        # Show API status
+        # Show model and API status
+        if model_type_internal == "advanced":
+            st.success("🚀 Advanced Model Active: Probability calibration, threshold optimization, enhanced features")
+        else:
+            st.info("📊 Legacy Models Active: Gradient Boosting + Logistic Regression")
+            
         if google_api_key:
             st.success("✅ Full Analysis Mode: Using Google Gemini for detailed analysis")
         else:
@@ -218,6 +353,7 @@ def main():
             'project_location': ['USA', 'Europe', 'Global', 'Global', 'Global'],
             'claimed_metric_type': ['carbon_offset', 'sustainability', 'emissions_reduction', 'net_zero', 'governance'],
             'claimed_value': [100.0, 0.0, 50.0, 0.0, 0.0],
+            'actual_measured_value': [95.0, 0.0, 55.0, 0.0, 0.0],
             'report_year': [2024, 2024, 2024, 2024, 2024]
         })
         
@@ -230,7 +366,10 @@ def main():
         )
         
         st.write("**Expected CSV Format:**")
-        st.code("esg_claim_text,claim_category,project_location,claimed_metric_type,claimed_value,report_year\n'Your ESG claim here','Environmental','USA','carbon_offset',100.0,2024\n'Another ESG claim here','Social','Europe','sustainability',0.0,2024", language="csv")
+        if model_type_internal == "advanced":
+            st.code("esg_claim_text,claim_category,project_location,claimed_metric_type,claimed_value,actual_measured_value,report_year\n'Your ESG claim here','Environmental','USA','carbon_offset',100.0,95.0,2024\n'Another ESG claim here','Social','Europe','sustainability',0.0,0.0,2024", language="csv")
+        else:
+            st.code("esg_claim_text,claim_category,project_location,claimed_metric_type,claimed_value,report_year\n'Your ESG claim here','Environmental','USA','carbon_offset',100.0,2024\n'Another ESG claim here','Social','Europe','sustainability',0.0,2024", language="csv")
         
         # File upload
         st.subheader("📤 Upload Your Batch File")
@@ -286,49 +425,100 @@ def main():
                                 
                                 total_claims = len(df_to_analyze)
                         
+                                if model_type_internal == "advanced":
+                                    from src.model_utils import AdvancedLogisticRegression
+                                    import pickle
+                                    from src.rag_utils import create_rag_system
+                                    # Load the advanced model once
+                                    with open("models/greenwashing_lr_advanced.pkl", "rb") as f:
+                                        advanced_model = pickle.load(f)
+                                    # Initialize RAG system once
+                                    rag_system = create_rag_system(google_api_key=google_api_key)
+                                
                                 for idx, row in df_to_analyze.iterrows():
                                     claim_text = row.get('esg_claim_text', '')
                                     if claim_text:
                                         status_text.text(f"Analyzing claim {idx + 1} of {total_claims}...")
                                         
                                         try:
-                                            # Extract user features from CSV row
-                                            user_features = {
-                                                'esg_claim_text': claim_text,
-                                                'claim_category': row.get('claim_category', 'Environmental'),
-                                                'project_location': row.get('project_location', 'Unknown'),
-                                                'claimed_metric_type': row.get('claimed_metric_type', 'Unknown'),
-                                                'claimed_value': float(row.get('claimed_value', 0.0) or 0.0),
-                                                'report_year': int(row.get('report_year', 2024) or 2024),
-                                                'claim_length': len(claim_text.split())
-                                            }
-                                            
-                                            result = agent.analyze_claim(claim_text, user_features=user_features)
-                                            model_preds = result.get('model_predictions', {})
-                                            results_list.append({
-                                                'claim_id': idx + 1,
-                                                'claim_text': claim_text[:100] + "..." if len(claim_text) > 100 else claim_text,
-                                                'risk_level': result.get('overall_assessment', {}).get('risk_level', 'N/A'),
-                                                'risk_score': result.get('overall_assessment', {}).get('overall_risk_score', 0.0),
-                                                'fraud_alert': result.get('overall_assessment', {}).get('fraud_alert', 'N/A'),
-                                                'category': user_features['claim_category'],
-                                                'gb_risk': model_preds.get('greenwashing_risk_gb', 0.0),
-                                                'lr_risk': model_preds.get('greenwashing_risk_lr', 0.0),
-                                                'rag_risk': result.get('rag_analysis', {}).get('rag_risk_score', 0.0),
-                                                'analysis_status': 'Success'
-                                            })
+                                            if model_type_internal == "advanced":
+                                                # Prepare input for advanced model
+                                                df_input = pd.DataFrame([{
+                                                    "esg_claim_text": claim_text,
+                                                    "claim_category": row.get('claim_category', 'Environmental'),
+                                                    "project_location": row.get('project_location', 'Unknown'),
+                                                    "claimed_metric_type": row.get('claimed_metric_type', 'Unknown'),
+                                                    "claimed_value": float(row.get('claimed_value', 0.0) or 0.0),
+                                                    "actual_measured_value": float(row.get('actual_measured_value', 0.0) or 0.0),
+                                                    "report_year": int(row.get('report_year', 2024) or 2024)
+                                                }])
+                                                df_input["abs_value_deviation"] = abs(df_input["claimed_value"].iloc[0] - df_input["actual_measured_value"].iloc[0])
+                                                df_input["rel_value_deviation"] = df_input["abs_value_deviation"] / (abs(df_input["claimed_value"].iloc[0]) + 1e-6)
+                                                risk_score = advanced_model.predict_proba(df_input)[0, 1]
+                                                threshold = advanced_model.get_threshold()
+                                                rag_results = rag_system.analyze_claim(claim_text) if include_rag else {"rag_risk_score": 0.0, "analysis": "RAG not run"}
+                                                risk_level = "HIGH" if risk_score >= threshold else "LOW"
+                                                fraud_alert = "HIGH" if risk_score >= threshold else "CLEAR"
+                                                results_list.append({
+                                                    'claim_id': idx + 1,
+                                                    'claim_text': claim_text[:100] + "..." if len(claim_text) > 100 else claim_text,
+                                                    'risk_level': risk_level,
+                                                    'risk_score': risk_score,
+                                                    'fraud_alert': fraud_alert,
+                                                    'category': row.get('claim_category', 'Environmental'),
+                                                    'advanced_risk': risk_score,
+                                                    'threshold': threshold,
+                                                    'rag_risk': rag_results.get('rag_risk_score', 0.0),
+                                                    'rag_analysis': rag_results.get('analysis', ''),
+                                                    'analysis_status': 'Success'
+                                                })
+                                            else:
+                                                # Legacy model path (unchanged)
+                                                user_features = {
+                                                    'esg_claim_text': claim_text,
+                                                    'claim_category': row.get('claim_category', 'Environmental'),
+                                                    'project_location': row.get('project_location', 'Unknown'),
+                                                    'claimed_metric_type': row.get('claimed_metric_type', 'Unknown'),
+                                                    'claimed_value': float(row.get('claimed_value', 0.0) or 0.0),
+                                                    'actual_measured_value': float(row.get('actual_measured_value', 0.0) or 0.0),
+                                                    'report_year': int(row.get('report_year', 2024) or 2024),
+                                                    'claim_length': len(claim_text.split())
+                                                }
+                                                result = agent.analyze_claim(claim_text, user_features=user_features)
+                                                model_preds = result.get('model_predictions', {})
+                                                gb_risk = model_preds.get('greenwashing_risk_gb', 0.0)
+                                                lr_risk = model_preds.get('greenwashing_risk_lr', 0.0)
+                                                advanced_risk = 0.0
+                                                threshold = 0.0
+                                                results_list.append({
+                                                    'claim_id': idx + 1,
+                                                    'claim_text': claim_text[:100] + "..." if len(claim_text) > 100 else claim_text,
+                                                    'risk_level': result.get('overall_assessment', {}).get('risk_level', 'N/A'),
+                                                    'risk_score': result.get('overall_assessment', {}).get('overall_risk_score', 0.0),
+                                                    'fraud_alert': result.get('overall_assessment', {}).get('fraud_alert', 'N/A'),
+                                                    'category': user_features['claim_category'],
+                                                    'advanced_risk': advanced_risk,
+                                                    'threshold': threshold,
+                                                    'rag_risk': result.get('rag_analysis', {}).get('rag_risk_score', 0.0),
+                                                    'rag_analysis': result.get('rag_analysis', {}).get('analysis', ''),
+                                                    'analysis_status': 'Success'
+                                                })
                                         except Exception as e:
+                                            if idx == 0:
+                                                import traceback
+                                                print('Batch analysis error:', traceback.format_exc())
                                             results_list.append({
                                                 'claim_id': idx + 1,
                                                 'claim_text': claim_text[:100] + "..." if len(claim_text) > 100 else claim_text,
                                                 'risk_level': 'ERROR',
                                                 'risk_score': 0.0,
                                                 'fraud_alert': 'Analysis Failed',
-                                                'category': 'N/A',
-                                                'gb_risk': 0.0,
-                                                'lr_risk': 0.0,
+                                                'category': row.get('claim_category', 'N/A'),
+                                                'advanced_risk': 0.0,
+                                                'threshold': 0.0,
                                                 'rag_risk': 0.0,
-                                                'analysis_status': f'Error: {str(e)[:50]}'
+                                                'rag_analysis': '',
+                                                'analysis_status': f'Error: {str(e)}'
                                             })
                                     
                                     current_progress = float(idx + 1) / float(total_claims)
@@ -338,6 +528,10 @@ def main():
                                 
                                 # Create results dataframe
                                 results_df = pd.DataFrame(results_list)
+                                
+                                # Drop gb_risk and lr_risk columns if advanced model is used
+                                if model_type_internal == "advanced":
+                                    results_df = results_df.drop(columns=["gb_risk", "lr_risk"], errors="ignore")
                                 
                                 # Display results
                                 st.subheader("📊 Batch Analysis Results")
@@ -395,10 +589,10 @@ def main():
                                         summary_data = {
                                             'Metric': ['Total Claims', 'Average Risk Score', 'High Risk Claims', 'Fraud Alerts', 'Success Rate'],
                                             'Value': [
-                                                len(results_df),
+                                                str(len(results_df)),
                                                 f"{avg_risk:.3f}",
-                                                high_risk_count,
-                                                fraud_alerts,
+                                                str(high_risk_count),
+                                                str(fraud_alerts),
                                                 f"{success_rate:.1f}%"
                                             ]
                                         }
@@ -408,7 +602,7 @@ def main():
                                     buffer.seek(0)
                                     st.download_button(
                                         label="📥 Download Results as Excel",
-                                        data=buffer,
+                                        data=buffer.getvalue(),
                                         file_name=f"esg_batch_analysis_{timestamp}.xlsx",
                                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                                     )
