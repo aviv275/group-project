@@ -4,12 +4,24 @@ A comprehensive AI-powered platform for detecting ESG fraud, greenwashing, and n
 
 ## 🌟 Features
 
-- **Multi-Model Analysis**: Baseline (TF-IDF + Logistic Regression) and Transformer (Sentence Transformers) models
+- **Multi-Model Analysis**: Advanced Logistic Regression (calibrated, threshold-optimized), Baseline (TF-IDF + Logistic Regression), and Transformer (Sentence Transformers) models
 - **RAG System**: Real-time regulatory compliance checking against ESG frameworks
 - **AI Agent**: LangChain-based agent orchestrating classification, detection, and RAG analysis
 - **Interactive Demo**: Streamlit app with real-time analysis and fraud alerts
 - **Business Intelligence**: Auto-generated pitch deck and grant opportunities
 - **Comprehensive EDA**: Detailed exploratory data analysis and visualizations
+
+## 🆕 New Advanced Model
+
+The platform now includes an **Advanced Logistic Regression model** with significant improvements:
+
+- **Probability Calibration**: Platt scaling for reliable confidence scores
+- **Threshold Optimization**: Automatic threshold selection for target recall (default: 80%)
+- **Enhanced Feature Engineering**: Absolute and relative value deviation features
+- **Group-Balanced Cross-Validation**: Prevents data leakage between related claims
+- **Improved Hyperparameter Tuning**: Extended grid search with L1/L2 regularization
+
+See [Advanced Model Guide](docs/ADVANCED_MODEL_GUIDE.md) for detailed documentation.
 
 ## 📁 Project Structure
 
@@ -20,10 +32,12 @@ esg-fraud-detection/
 │   └── clean_claims.parquet
 ├── src/                           # Source code
 │   ├── data_prep.py              # Data cleaning and feature engineering
-│   ├── model_utils.py            # Model training and evaluation
+│   ├── model_utils.py            # Model training and evaluation (includes AdvancedLogisticRegression)
 │   ├── rag_utils.py              # RAG system implementation
 │   ├── agent_runner.py           # AI agent orchestrator
-│   └── train_pipeline.py         # Training pipeline CLI
+│   ├── train_pipeline.py         # Training pipeline CLI
+│   ├── train_advanced_logistic_regression.py  # Advanced model training
+│   └── run_advanced_model.py     # Advanced model runner
 ├── notebooks/                     # Jupyter notebooks
 │   ├── 01_data_quality.ipynb     # Data audit and cleaning
 │   ├── 02_eda.ipynb              # Exploratory data analysis
@@ -36,6 +50,8 @@ esg-fraud-detection/
 ├── models/                       # Trained models
 ├── metrics/                      # Model performance metrics
 ├── reports/                      # Analysis reports and figures
+├── docs/                         # Documentation
+│   └── ADVANCED_MODEL_GUIDE.md   # Advanced model documentation
 ├── business/                     # Business documents
 │   ├── pitch_deck.pptx           # Auto-generated pitch deck
 │   └── grant_scan.md             # Grant opportunities
@@ -86,17 +102,32 @@ jupyter notebook notebooks/01_data_quality.ipynb
 ### 4. Train Models
 
 ```bash
-# Train baseline models
-python src/train_pipeline.py --task both --model baseline
+# Train advanced logistic regression model (recommended)
+python3 run_advanced_pipeline.py
+
+# Train all models (advanced + legacy)
+python3 run_pipeline.py
+
+# Train only advanced model
+python3 run_pipeline.py --advanced-only
+
+# Train only legacy models
+python3 run_pipeline.py --legacy-only
+
+# Train with custom parameters
+python3 run_advanced_pipeline.py --target-recall 0.85 --skip-data-quality
+
+# Train baseline models (legacy)
+python3 src/train_pipeline.py --task both --model baseline
 
 # Train transformer models (requires sentence-transformers)
-python src/train_pipeline.py --task both --model transformer
+python3 src/train_pipeline.py --task both --model transformer
 
 # Train both model types
-python src/train_pipeline.py --task both --model both
+python3 src/train_pipeline.py --task both --model both
 
 # Setup RAG system
-python src/train_pipeline.py --task rag
+python3 src/train_pipeline.py --task rag
 ```
 
 ### 4. Launch Demo
@@ -115,22 +146,28 @@ jupyter notebook notebooks/01_data_quality.ipynb
 jupyter notebook notebooks/02_eda.ipynb
 ```
 
-### Step 2: Model Training
+### Step 2: Model Training (Choose One)
 ```bash
-# Train all models
-python src/train_pipeline.py --task both --model both --data data/clean_claims.parquet
+# Option A: Advanced Model (Recommended)
+python3 run_advanced_pipeline.py
+
+# Option B: All Models (Advanced + Legacy)
+python3 run_pipeline.py
+
+# Option C: Legacy Models Only
+python3 run_pipeline.py --legacy-only
 ```
 
 ### Step 3: RAG System Setup
 ```bash
 # Setup RAG with ESG corpora
-python src/train_pipeline.py --task rag
+python3 src/train_pipeline.py --task rag
 ```
 
 ### Step 4: AI Agent Testing
 ```bash
 # Test AI agent on sample claims
-python src/agent_runner.py --input "We will achieve net-zero emissions by 2050"
+python3 src/agent_runner.py --input "We will achieve net-zero emissions by 2050"
 ```
 
 ### Step 5: Business Plan Generation
@@ -221,6 +258,12 @@ python src/agent_runner.py --input "Claim text" --output results.json
 - Auto-generated pitch deck
 
 ## 📈 Model Performance
+
+### Advanced Logistic Regression Model (Recommended)
+- **Greenwashing Detection**: ~82% AUC, calibrated probabilities, optimized threshold
+- **Feature Engineering**: Enhanced with value deviation features
+- **Probability Calibration**: Platt scaling for reliable confidence scores
+- **Threshold Optimization**: Automatic selection for target recall (80%)
 
 ### Baseline Models
 - **Category Classification**: ~85% accuracy, F1: 0.82
