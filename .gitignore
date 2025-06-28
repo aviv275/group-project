@@ -107,7 +107,6 @@ data/*.csv
 data/clean_claims*.parquet
 
 # Model files (large binary files)
-models/*.pkl
 models/rag_system/vector_store.index/
 
 # Generated figures and reports
