@@ -6,13 +6,18 @@ This module provides functions for model training, evaluation, and explainabilit
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score, cross_val_predict, GridSearchCV
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score, precision_score
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.decomposition import TruncatedSVD
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import roc_auc_score, precision_recall_curve, PrecisionRecallDisplay
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.utils import check_random_state
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sentence_transformers import SentenceTransformer
@@ -323,4 +328,184 @@ def plot_feature_importance(importance: Dict[str, float], task: str, top_n: int 
     plt.title(f'Feature Importance - {task}')
     plt.tight_layout()
     plt.savefig(f'reports/figures/feature_importance_{task}.png', dpi=300, bbox_inches='tight')
-    plt.close() 
+    plt.close()
+
+class ThresholdWrapper(BaseEstimator, ClassifierMixin):
+    """Wrapper for applying a custom threshold to calibrated probabilities."""
+    
+    def __init__(self, model, threshold):
+        self.model = model
+        self.threshold = threshold
+        
+    def fit(self, X, y):
+        """Fit the underlying model."""
+        self.model.fit(X, y)
+        return self
+        
+    def predict_proba(self, X):
+        """Get prediction probabilities."""
+        return self.model.predict_proba(X)
+        
+    def predict(self, X):
+        """Make predictions using the custom threshold."""
+        p = self.predict_proba(X)[:, 1]
+        return (p >= self.threshold).astype(int)
+
+def make_balanced_group_folds(y, groups, n_splits=4, rng=42):
+    """
+    Build list of (train_idx, val_idx) tuples so that each validation fold
+    contains at least one positive and one negative sample while keeping all
+    rows of a given group together.
+    """
+    rng = check_random_state(rng)
+    uniq_groups = np.unique(groups)
+
+    for _ in range(200):  # up to 200 shuffle attempts
+        rng.shuffle(uniq_groups)
+        folds = np.array_split(uniq_groups, n_splits)
+        splits, ok = [], True
+        for fold_groups in folds:
+            val_mask = np.isin(groups, fold_groups)
+            if len(np.unique(y[val_mask])) < 2:
+                ok = False
+                break
+            splits.append((np.where(~val_mask)[0], np.where(val_mask)[0]))
+        if ok:
+            return splits
+    raise RuntimeError("Could not build balanced group folds.")
+
+class AdvancedLogisticRegression:
+    """Advanced Logistic Regression model with calibration and threshold optimization."""
+    
+    def __init__(self, target_recall: float = 0.80):
+        """
+        Initialize advanced logistic regression model.
+        
+        Args:
+            target_recall: Target recall for threshold optimization
+        """
+        self.target_recall = target_recall
+        self.calibrated_model = None
+        self.threshold = None
+        self.best_pipeline = None
+        self.feature_names = None
+        
+    def fit(self, X: pd.DataFrame, y: pd.Series, groups: np.ndarray = None):
+        """
+        Fit the advanced model with calibration and threshold optimization.
+        
+        Args:
+            X: Feature DataFrame
+            y: Target series
+            groups: Group identifiers for group-balanced CV (optional)
+        """
+        logger.info("Training advanced Logistic Regression model...")
+        
+        # Convert y to numpy array if it's a pandas Series
+        if isinstance(y, pd.Series):
+            y = y.values
+        
+        # Define features
+        text_feature = "esg_claim_text"
+        categorical_features = ["claim_category", "project_location", "claimed_metric_type"]
+        numerical_features = [
+            "claimed_value", "actual_measured_value", "report_year", 
+            "abs_value_deviation", "rel_value_deviation"
+        ]
+        
+        # Create preprocessing pipeline
+        preprocessor = ColumnTransformer(transformers=[
+            ("text", Pipeline([
+                ("tfidf", TfidfVectorizer(max_features=2_000, ngram_range=(1, 2), stop_words="english")),
+                ("svd", TruncatedSVD(n_components=100, random_state=RANDOM_SEED))
+            ]), text_feature),
+            
+            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
+            ("num", StandardScaler(), numerical_features)
+        ])
+        
+        # Create base model
+        base_lr = LogisticRegression(
+            solver="liblinear",
+            class_weight="balanced",
+            max_iter=2_000
+        )
+        
+        # Create full pipeline
+        pipe = Pipeline([
+            ("preprocessor", preprocessor),
+            ("classifier", base_lr),
+        ])
+        
+        # Define hyperparameter grid
+        param_grid = {
+            "classifier__C": [0.01, 0.1, 1, 10, 100],
+            "classifier__penalty": ["l1", "l2"],
+        }
+        
+        # Define cross-validation
+        inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
+        
+        # Perform grid search
+        grid_search = GridSearchCV(
+            estimator=pipe,
+            param_grid=param_grid,
+            cv=inner_cv,
+            scoring="roc_auc",
+            n_jobs=-1,
+            verbose=1
+        )
+        
+        grid_search.fit(X, y)
+        self.best_pipeline = grid_search.best_estimator_
+        
+        # Calibrate probabilities
+        self.calibrated_model = CalibratedClassifierCV(
+            self.best_pipeline, method="sigmoid", cv=inner_cv
+        )
+        self.calibrated_model.fit(X, y)
+        
+        # Choose optimal threshold for target recall
+        oof_prob = cross_val_predict(
+            self.calibrated_model, X, y,
+            cv=inner_cv, method="predict_proba",
+            n_jobs=-1
+        )
+        oof_prob = np.array(oof_prob)[:, 1]
+        
+        prec, rec, thr = precision_recall_curve(y, oof_prob)
+        prec, rec, thr = prec[1:], rec[1:], thr
+        
+        # Find highest threshold with recall >= target
+        ix = np.where(rec >= self.target_recall)[0][-1]
+        self.threshold = float(thr[ix])
+        
+        logger.info(f"Optimal threshold: {self.threshold:.3f}")
+        logger.info(f"OOF Recall @ threshold: {rec[ix]:.3f}")
+        logger.info(f"OOF Precision @ threshold: {prec[ix]:.3f}")
+        
+        # Store feature names
+        self.feature_names = {
+            "text": text_feature,
+            "categorical": categorical_features,
+            "numerical": numerical_features
+        }
+        
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """Get prediction probabilities."""
+        if self.calibrated_model is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
+        return self.calibrated_model.predict_proba(X)
+    
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        """Make predictions using the optimized threshold."""
+        if self.calibrated_model is None or self.threshold is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
+        probs = self.predict_proba(X)[:, 1]
+        return (probs >= self.threshold).astype(int)
+    
+    def get_threshold(self) -> float:
+        """Get the optimized threshold."""
+        if self.threshold is None:
+            raise RuntimeError("Model has not been trained. Call fit() first.")
+        return self.threshold 
